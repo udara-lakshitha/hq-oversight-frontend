@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function RegisterForm({ setView }) {
   const [name, setName] = useState('');
@@ -7,11 +7,34 @@ export default function RegisterForm({ setView }) {
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   const [isError, setIsError] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [countdown, setCountdown] = useState(null);
+
+  // Handle the toast automatic fade-out
+  useEffect(() => {
+    if (!showToast) return;
+    const toastTimer = setTimeout(() => {
+      setShowToast(false);
+    }, 4000); // Toast stays visible for 4 seconds
+    return () => clearTimeout(toastTimer);
+  }, [showToast]);
+
+  // Handle the routing countdown redirect upon compilation success
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown === 0) {
+      setView('login');
+      return;
+    }
+    const redirectTimer = setTimeout(() => setCountdown(countdown - 1), 1000);
+    return () => clearTimeout(redirectTimer);
+  }, [countdown, setView]);
 
   const handleRegister = async (e) => {
     e.preventDefault();
     setMessage('');
     setIsError(false);
+    setShowToast(false);
 
     const payload = {
       name,
@@ -32,21 +55,62 @@ export default function RegisterForm({ setView }) {
 
       if (response.ok) {
         setIsError(false);
-        setMessage(`Success! Registered successfully with Student ID: ${data.id}`);
+        setMessage(`Success! Profile built. Assigned ID: STU-${data.id.toString().padStart(4, '0')}`);
+        setShowToast(true);
         setName(''); setEmail(''); setPhoneNumber(''); setPassword('');
+        setCountdown(3);
       } else {
         setIsError(true);
-        setMessage(data.detail || 'Registration parameters failed validation check.');
+        setMessage(data.detail || 'Registration parameters failed architectural validation checks.');
+        setShowToast(true);
       }
     } catch (error) {
       setIsError(true);
       setMessage('Network connectivity failure. Ensure FastAPI engine is online.');
+      setShowToast(true);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-100 p-8 space-y-6">
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 relative overflow-hidden">
+      
+      {/* HackerRank Floating Top-Right Toast Notification Portal */}
+      <div className={`fixed top-6 right-6 z-50 transform transition-all duration-300 ease-out max-w-sm w-full ${
+        showToast ? 'translate-x-0 opacity-100' : 'translate-x-12 opacity-0 pointer-events-none'
+      }`}>
+        <div className={`p-4 rounded-lg shadow-2xl border flex items-start gap-3 ${
+          isError 
+            ? 'bg-red-50 border-red-200 text-red-950' 
+            : 'bg-[#EBF7EE] border-[#1BA94C] text-[#194D26]'
+        }`}>
+          {/* Status Icon Indicator */}
+          <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-black text-white ${
+            isError ? 'bg-red-600' : 'bg-[#1BA94C]'
+          }`}>
+            {isError ? '!' : '✓'}
+          </div>
+
+          <div className="flex-1 space-y-0.5">
+            <h4 className={`text-xs font-black tracking-wider uppercase ${isError ? 'text-red-800' : 'text-[#1AA148]'}`}>
+              {isError ? 'System Exception Error' : 'Success'}
+            </h4>
+            <p className="text-xs font-bold leading-relaxed opacity-95">{message}</p>
+            {!isError && countdown !== null && (
+              <p className="text-[10px] font-black text-[#2E7D42] italic pt-0.5">
+                Routing to core console authentication in {countdown}s...
+              </p>
+            )}
+          </div>
+
+          {/* Manual Dismiss Cross Button */}
+          <button onClick={() => setShowToast(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xs px-1 cursor-pointer">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      {/* Main Registration Panel Layout */}
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-100 p-8 space-y-6 z-10">
         <div>
           <button 
             onClick={() => setView('landing')} 
@@ -61,34 +125,36 @@ export default function RegisterForm({ setView }) {
         <form onSubmit={handleRegister} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Full Name</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="Udara Lakshitha" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-800" />
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="Udara Lakshitha" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-800" disabled={countdown !== null} />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Email Address</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="name@example.com" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-800" />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="name@example.com" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-800" disabled={countdown !== null} />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Mobile number</label>
-            <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} required placeholder="0771234567" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-800" />
+            <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} required placeholder="0771234567" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-800" disabled={countdown !== null} />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••••••" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-800" />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••••••" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-800" disabled={countdown !== null} />
           </div>
 
-          <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition-colors duration-150 cursor-pointer">
-            Verify & Create Profile
+          <button 
+            type="submit" 
+            disabled={countdown !== null}
+            className={`w-full py-3 text-white font-bold rounded-xl shadow-md transition-all duration-150 ${
+              countdown !== null 
+                ? 'bg-slate-300 cursor-not-allowed shadow-none' 
+                : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
+            }`}
+          >
+            {countdown !== null ? 'Initializing Redirect...' : 'Verify & Create Profile'}
           </button>
         </form>
-
-        {message && (
-          <div className={`p-4 rounded-xl text-sm font-bold text-center border ${isError ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
-            {message}
-          </div>
-        )}
       </div>
     </div>
   );

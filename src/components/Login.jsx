@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import Dashboard from './Dashboard';
 
 const BACKEND_URL = 'http://127.0.0.1:8000';
 
@@ -85,29 +86,7 @@ export default function Login({ setView }) {
   };
 
   if (successUser) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-100 p-8 text-center space-y-4">
-          <h1 className="text-2xl font-black text-slate-900">Ayubowan, {successUser.name}! 👋</h1>
-          <p className="text-sm font-medium text-slate-500 leading-relaxed">
-            Welcome back to your HQ-Oversight Combined Mathematics Dashboard framework.
-          </p>
-          <div className="bg-[#EBF7EE] border border-[#1BA94C] p-4 rounded-xl text-left space-y-1">
-            <p className="text-xs font-bold text-[#194D26]"><strong>User Account:</strong> {successUser.email}</p>
-            <p className="text-xs font-bold text-[#194D26]"><strong>Device Fingerprint:</strong> Secure Session Active ✅</p>
-          </div>
-          <button 
-            onClick={() => {
-              localStorage.removeItem('access_token');
-              window.location.reload();
-            }}
-            className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer"
-          >
-            Terminate Session Session
-          </button>
-        </div>
-      </div>
-    );
+    return <Dashboard student={successUser} />;
   }
 
   return (

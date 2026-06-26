@@ -4,7 +4,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 const BACKEND_URL = 'http://127.0.0.1:8000';
 
-const MOCK_LIVE_MODE = true;
+const MOCK_LIVE_MODE = false;
 
 export default function Dashboard({ student }) {
   const [activeTab, setActiveTab] = useState('analytics'); 
@@ -24,9 +24,28 @@ export default function Dashboard({ student }) {
 
   const [countdownString, setCountdownString] = useState('');
 
+
+  const [message, setMessage] = useState('');
+  const [isError, setIsError] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+
   const getAuthHeader = () => {
     const token = localStorage.getItem('access_token');
     return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  useEffect(() => {
+    if (!showToast) return;
+    const toastTimer = setTimeout(() => {
+      setShowToast(false);
+    }, 2000); 
+    return () => clearTimeout(toastTimer);
+  }, [showToast]);
+
+  const showNotification = (msg, errorStatus = false) => {
+    setMessage(msg);
+    setIsError(errorStatus);
+    setShowToast(true);
   };
 
   useEffect(() => {
@@ -62,11 +81,10 @@ export default function Dashboard({ student }) {
               headers: getAuthHeader()
             });
             setActivePaper(activeRes.data);
+            setErrorMsg(''); 
           } catch (err) {
-            if (!MOCK_LIVE_MODE) {
-              setErrorMsg(err.response?.data?.detail || "Failed to synchronize live exam.");
-              setActivePaper(null);
-            }
+            setErrorMsg(err.response?.data?.detail || "Failed to synchronize live exam.");
+            setActivePaper(null);
           }
         }
 
@@ -95,6 +113,7 @@ export default function Dashboard({ student }) {
 
   const handleDownloadPaper = async (examId, paperTitle) => {
     try {
+      showNotification(`Initializing question sheet download for ${paperTitle}...`, false);
       const response = await axios.get(`${BACKEND_URL}/api/exams/stream-paper/${examId}`, {
         headers: getAuthHeader(), responseType: 'blob'
       });
@@ -105,13 +124,15 @@ export default function Dashboard({ student }) {
       document.body.appendChild(fileLink);
       fileLink.click();
       fileLink.remove();
+      showNotification('📥 Question paper downloaded successfully!', false);
     } catch (err) {
-      alert("Unable to download target question paper resource file.");
+      showNotification('❌ Unable to download target question paper resource file.', true);
     }
   };
 
   const handleDownloadScheme = async (examId, paperTitle) => {
     try {
+      showNotification(`Requesting secure marking matrix key for ${paperTitle}...`, false);
       const response = await axios.get(`${BACKEND_URL}/api/marks/stream-scheme/${examId}`, {
         headers: getAuthHeader(), responseType: 'blob'
       });
@@ -122,15 +143,17 @@ export default function Dashboard({ student }) {
       document.body.appendChild(fileLink);
       fileLink.click();
       fileLink.remove();
+      showNotification('🔑 Marking scheme downloaded cleanly!', false);
     } catch (err) {
-      alert(err.response?.data?.detail || "Access Denied: Ensure your paper has been evaluated first.");
+      const deniedMsg = err.response?.data?.detail || "Access Denied: Ensure your paper has been evaluated first.";
+      showNotification(`🔒 ${deniedMsg}`, true);
     }
   };
 
   const handleAnswerUploadSubmit = async (e, examId) => {
     e.preventDefault();
     if (!selectedFile) {
-      setUploadStatus({ success: false, message: 'Please select a clean PDF file matrix to upload.' });
+      showNotification('⚠️ Please select a clean PDF file matrix to upload.', true);
       return;
     }
 
@@ -143,9 +166,12 @@ export default function Dashboard({ student }) {
         headers: { ...getAuthHeader(), 'Content-Type': 'multipart/form-data' }
       });
       setUploadStatus({ success: true, message: '✅ Submission transmitted successfully!' });
+      showNotification('🚀 Answer script uploaded successfully!', false);
       setSelectedFile(null);
     } catch (err) {
-      setUploadStatus({ success: false, message: err.response?.data?.detail || 'Transmission failed.' });
+      const failMsg = err.response?.data?.detail || 'Transmission failed.';
+      setUploadStatus({ success: false, message: failMsg });
+      showNotification(`❌ Upload Failed: ${failMsg}`, true);
     }
   };
 
@@ -182,7 +208,7 @@ export default function Dashboard({ student }) {
           setCountdownString("⏱️ TIME EXPIRED: Live transmission gateway closed.");
           setActiveTab('past-papers');
         } else {
-          const displayDistance = distance <= 0 ? 8070000 : distance; // Keep a running clock view alive for mock testing
+          const displayDistance = distance <= 0 ? 8070000 : distance; 
           const hours = String(Math.floor((displayDistance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))).padStart(2, '0');
           const minutes = String(Math.floor((displayDistance % (1000 * 60 * 60)) / (1000 * 60))).padStart(2, '0');
           const seconds = String(Math.floor((displayDistance % (1000 * 60)) / 1000)).padStart(2, '0');
@@ -208,14 +234,20 @@ export default function Dashboard({ student }) {
         const minutes = String(Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60))).padStart(2, '0');
         const seconds = String(Math.floor((distance % (1000 * 60)) / 1000)).padStart(2, '0');
 
-        setCountdownString(`${nextExamPrediction.code} will be enabled after ${days}d : ${hours}h : ${minutes}m : ${seconds}s`);
+        let targetPaperCode = nextExamPrediction.code;
+        if (errorMsg && errorMsg.includes("HQ ")) {
+          const match = errorMsg.match(/HQ \d+/);
+          if (match) targetPaperCode = match[0];
+        }
+
+        setCountdownString(`${targetPaperCode} will be enabled after ${days}d : ${hours}h : ${minutes}m : ${seconds}s`);
       }
     };
 
     updateSystemClock();
     const clockInterval = setInterval(updateSystemClock, 1000);
     return () => clearInterval(clockInterval);
-  }, [activePaper, nextExamPrediction]);
+  }, [activePaper, nextExamPrediction, errorMsg]);
 
   const unifiedHistoryData = useMemo(() => {
     const processed = dbMarks.map((item) => {
@@ -252,7 +284,35 @@ export default function Dashboard({ student }) {
   }, [dbMarks, subjectFilter, rangeFilter]);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 w-full font-sans antialiased">
+    <div className="min-h-screen bg-slate-50 text-slate-800 w-full font-sans antialiased relative overflow-hidden">
+      
+      <div className={`fixed top-6 right-6 z-50 transform transition-all duration-300 ease-out max-w-sm w-full ${
+        showToast ? 'translate-x-0 opacity-100' : 'translate-x-12 opacity-0 pointer-events-none'
+      }`}>
+        <div className={`p-4 rounded-lg shadow-2xl border flex items-start gap-3 ${
+          isError 
+            ? 'bg-red-50 border-red-200 text-red-950' 
+            : 'bg-[#EBF7EE] border-[#1BA94C] text-[#194D26]'
+        }`}>
+          <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-black text-white ${
+            isError ? 'bg-red-600' : 'bg-[#1BA94C]'
+          }`}>
+            {isError ? '!' : '✓'}
+          </div>
+
+          <div className="flex-1 space-y-0.5">
+            <h4 className={`text-xs font-black tracking-wider uppercase ${isError ? 'text-red-800' : 'text-[#1AA148]'}`}>
+              {isError ? 'System Exception Error' : 'Success'}
+            </h4>
+            <p className="text-xs font-bold leading-relaxed opacity-95">{message}</p>
+          </div>
+
+          <button onClick={() => setShowToast(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xs px-1 cursor-pointer">
+            ✕
+          </button>
+        </div>
+      </div>
+
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-5xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
@@ -417,7 +477,15 @@ export default function Dashboard({ student }) {
                       <tr key={paper.id} className="hover:bg-slate-50/50">
                         <td className="px-5 py-3.5 font-black text-slate-900">{paper.paper_number}</td>
                         <td className="px-5 py-3.5 font-medium text-slate-700">{paper.title}</td>
-                        <td className="px-5 py-3.5"><span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-blue-50 text-blue-700">{paper.paper_type}</span></td>
+                        <td className="px-5 py-3.5">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
+                            paper.paper_type === 'Pure Maths' 
+                              ? 'bg-blue-50 text-blue-700' 
+                              : 'bg-emerald-50 text-emerald-700'
+                          }`}>
+                            {paper.paper_type}
+                          </span>
+                        </td>
                         <td className="px-5 py-3.5 text-right space-x-1.5">
                           <button onClick={() => handleDownloadPaper(paper.id, paper.title)} className="px-2.5 py-1.5 bg-slate-100 text-slate-800 text-[11px] font-bold rounded-md cursor-pointer">📄 Questions</button>
                           <button onClick={() => handleDownloadScheme(paper.id, paper.title)} className="px-2.5 py-1.5 bg-blue-50 text-blue-700 text-[11px] font-bold rounded-md cursor-pointer">🔑 Scheme</button>

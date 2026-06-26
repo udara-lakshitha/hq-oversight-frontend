@@ -10,16 +10,14 @@ export default function RegisterForm({ setView }) {
   const [showToast, setShowToast] = useState(false);
   const [countdown, setCountdown] = useState(null);
 
-  // Handle the toast automatic fade-out
   useEffect(() => {
     if (!showToast) return;
     const toastTimer = setTimeout(() => {
       setShowToast(false);
-    }, 4000); // Toast stays visible for 4 seconds
+    }, 4000);
     return () => clearTimeout(toastTimer);
   }, [showToast]);
 
-  // Handle the routing countdown redirect upon compilation success
   useEffect(() => {
     if (countdown === null) return;
     if (countdown === 0) {
@@ -74,7 +72,6 @@ export default function RegisterForm({ setView }) {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 relative overflow-hidden">
       
-      {/* HackerRank Floating Top-Right Toast Notification Portal */}
       <div className={`fixed top-6 right-6 z-50 transform transition-all duration-300 ease-out max-w-sm w-full ${
         showToast ? 'translate-x-0 opacity-100' : 'translate-x-12 opacity-0 pointer-events-none'
       }`}>
@@ -83,7 +80,6 @@ export default function RegisterForm({ setView }) {
             ? 'bg-red-50 border-red-200 text-red-950' 
             : 'bg-[#EBF7EE] border-[#1BA94C] text-[#194D26]'
         }`}>
-          {/* Status Icon Indicator */}
           <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-black text-white ${
             isError ? 'bg-red-600' : 'bg-[#1BA94C]'
           }`}>
@@ -102,14 +98,12 @@ export default function RegisterForm({ setView }) {
             )}
           </div>
 
-          {/* Manual Dismiss Cross Button */}
           <button onClick={() => setShowToast(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xs px-1 cursor-pointer">
             ✕
           </button>
         </div>
       </div>
 
-      {/* Main Registration Panel Layout */}
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-100 p-8 space-y-6 z-10">
         <div>
           <button 

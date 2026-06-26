@@ -10,12 +10,10 @@ export default function Dashboard({ student }) {
   const [rangeFilter, setRangeFilter] = useState('ALL');
   const [visibleRows, setVisibleRows] = useState(5);
   
-  // Performance Log State
   const [dbMarks, setDbMarks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Live Exam & Past Papers States
   const [activePaper, setActivePaper] = useState(null);
   const [pastPapers, setPastPapers] = useState([]);
   const [loadingExams, setLoadingExams] = useState(false);
@@ -27,7 +25,6 @@ export default function Dashboard({ student }) {
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
-  // Sync historical chart data and marks
   useEffect(() => {
     const fetchStudentMarks = async () => {
       try {
@@ -49,25 +46,28 @@ export default function Dashboard({ student }) {
     }
   }, [student?.id]);
 
-  // Sync data across active portals and past archives dynamically
   useEffect(() => {
     if (activeTab === 'analytics') return;
 
     const fetchExamData = async () => {
       setLoadingExams(true);
+      setErrorMsg('');
       try {
         if (activeTab === 'weekly') {
           setUploadStatus({ success: null, message: '' });
           setSelectedFile(null);
           try {
-            const activeRes = await axios.get(`${BACKEND_URL}/api/marks/active-paper`, {
+            const activeRes = await axios.get(`${BACKEND_URL}/api/exams/live-session`, {
               headers: getAuthHeader()
             });
             setActivePaper(activeRes.data);
           } catch (err) {
-            if (err.response?.status === 403) {
-              setActivePaper(null);
+            if (err.response && err.response.data && err.response.data.detail) {
+              setErrorMsg(err.response.data.detail);
+            } else {
+              setErrorMsg("Failed to synchronize with live exam stream configuration.");
             }
+            setActivePaper(null);
           }
         }
 
@@ -94,10 +94,9 @@ export default function Dashboard({ student }) {
     return "Good Evening";
   }, []);
 
-  // Secure File Streaming Triggers
   const handleDownloadPaper = async (examId, paperTitle) => {
     try {
-      const response = await axios.get(`${BACKEND_URL}/api/marks/stream-paper/${examId}`, {
+      const response = await axios.get(`${BACKEND_URL}/api/exams/stream-paper/${examId}`, {
         headers: getAuthHeader(),
         responseType: 'blob'
       });
@@ -109,11 +108,18 @@ export default function Dashboard({ student }) {
       fileLink.click();
       fileLink.remove();
     } catch (err) {
-      alert(err.response?.data?.detail || "Unable to download target question paper resource file.");
+      alert("Unable to download target question paper resource file. Ensure server asset path settings are valid.");
     }
   };
 
   const handleDownloadScheme = async (examId, paperTitle) => {
+    const hasSubmitted = dbMarks.some(submission => submission.exam_id === examId || submission.id === examId);
+    
+    if (!hasSubmitted) {
+      alert("Access Denied: Marking schemes are reserved exclusively for students who completed and submitted their answer script version first.");
+      return;
+    }
+
     try {
       const response = await axios.get(`${BACKEND_URL}/api/marks/stream-scheme/${examId}`, {
         headers: getAuthHeader(),
@@ -127,7 +133,7 @@ export default function Dashboard({ student }) {
       fileLink.click();
       fileLink.remove();
     } catch (err) {
-      alert(err.response?.data?.detail || "Access Denied: Marking schemes are reserved exclusively for students who completed submissions.");
+      alert(err.response?.data?.detail || "Access Denied: Unable to clear verification protocols for this scheme asset.");
     }
   };
 
@@ -143,11 +149,19 @@ export default function Dashboard({ student }) {
 
     try {
       setUploadStatus({ success: null, message: 'Uploading answer configuration trace...' });
-      await axios.post(`${BACKEND_URL}/api/marks/submit-paper/${examId}`, formPayload, {
-        headers: { ...getAuthHeader(), 'Content-Type': 'multipart/form-data' }
+      await axios.post(`${BACKEND_URL}/api/exams/submit-live/${examId}`, formPayload, {
+        headers: { 
+          ...getAuthHeader(), 
+          'Content-Type': 'multipart/form-data' 
+        }
       });
-      setUploadStatus({ success: true, message: 'Your answer sheet has been successfully transmitted!' });
+      setUploadStatus({ success: true, message: '✅ Submission transmitted successfully! Your marking scheme will unlock once grading parameters clear.' });
       setSelectedFile(null);
+      
+      const response = await axios.get(`${BACKEND_URL}/api/marks/student/${student.id}`, {
+        headers: getAuthHeader()
+      });
+      setDbMarks(response.data);
     } catch (err) {
       setUploadStatus({
         success: false,
@@ -156,11 +170,13 @@ export default function Dashboard({ student }) {
     }
   };
 
-  // Predictive Next Exam Logic Engine
   const nextExamPrediction = useMemo(() => {
     let maxNum = 0;
-    const combinedPapersList = [...dbMarks, ...pastPapers];
-    combinedPapersList.forEach(p => {
+    
+    const combinedList = [...dbMarks, ...pastPapers];
+    if (activePaper) combinedList.push(activePaper);
+
+    combinedList.forEach(p => {
       if (p.paper_number) {
         const extractedDigits = p.paper_number.replace(/^\D+/g, '');
         const parsed = parseInt(extractedDigits, 10);
@@ -170,7 +186,7 @@ export default function Dashboard({ student }) {
       }
     });
 
-    if (maxNum === 0) maxNum = 7;
+    const nextPaperNum = maxNum > 0 ? maxNum + 1 : 1;
 
     const now = new Date();
     const currentDay = now.getDay();
@@ -187,23 +203,16 @@ export default function Dashboard({ student }) {
       dayLabel = 'Tuesday';
     }
 
-    let nextPaperNum = maxNum + 1;
-    if (targetStream === 'APPLIED') {
-      if (nextPaperNum % 2 !== 0) nextPaperNum += 1;
-    } else {
-      if (nextPaperNum % 2 === 0) nextPaperNum += 1;
-    }
-
     return {
       day: dayLabel,
       type: targetStream === 'PURE' ? 'Pure Maths' : 'Applied Maths',
       code: `HQ ${nextPaperNum}`
     };
-  }, [dbMarks, pastPapers]);
+  }, [dbMarks, pastPapers, activePaper]);
 
   const unifiedHistoryData = useMemo(() => {
     const processed = dbMarks.map((item) => {
-      const paperDigits = item.paper_number.replace(/^\D+/g, '');
+      const paperDigits = item.paper_number?.replace(/^\D+/g, '') || '1';
       const isPure = parseInt(paperDigits, 10) % 2 !== 0;
 
       return {
@@ -358,33 +367,48 @@ export default function Dashboard({ student }) {
                 <h3 className="text-lg font-black text-slate-900 mt-2">Active Examination Gate</h3>
               </div>
 
-              {activePaper ? (
+              {loadingExams ? (
+                <div className="text-center font-bold text-slate-500 py-8">Synchronizing portal metrics...</div>
+              ) : errorMsg ? (
+                <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <p className="text-sm font-black text-slate-700">🔒 System locked. {errorMsg}</p>
+                  <p className="text-xs text-blue-600 font-bold bg-blue-50/60 inline-block px-4 py-1.5 rounded-lg border border-blue-100">
+                    💡 The next exam will be available on <span className="underline">{nextExamPrediction.day}</span>: <span className="font-black font-mono">{nextExamPrediction.code}</span> ({nextExamPrediction.type})
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-medium block pt-1">Please report to the portal according to your class time-frame parameters (9:00 PM - 12:00 AM strictly).</p>
+                </div>
+              ) : activePaper ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
                     <div>
                       <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-blue-100 text-blue-800">{activePaper.paper_type}</span>
-                      <h4 className="text-md font-bold text-slate-900 mt-2">{activePaper.title}</h4>
+                      <h4 className="text-md font-bold text-slate-900 mt-2">{activePaper.paper_number}: {activePaper.title}</h4>
                     </div>
                     <button onClick={() => handleDownloadPaper(activePaper.id, activePaper.title)} className="mt-4 w-full py-2 bg-blue-600 text-white font-bold text-xs rounded-lg cursor-pointer">📥 Download Question Sheet</button>
                   </div>
 
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                     <form onSubmit={(e) => handleAnswerUploadSubmit(e, activePaper.id)} className="space-y-3">
-                      <div className="border-2 dashed border-slate-200 rounded-lg p-4 bg-white text-center relative">
+                      <div className="border-2 border-dashed border-slate-200 rounded-lg p-4 bg-white text-center relative">
                         <input type="file" accept=".pdf" onChange={(e) => setSelectedFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
                         <p className="text-xs font-bold text-slate-600">{selectedFile ? `📄 ${selectedFile.name}` : 'Select answer sheet PDF'}</p>
                       </div>
                       <button type="submit" className="w-full py-2 bg-emerald-600 text-white font-bold text-xs rounded-lg cursor-pointer">🚀 Transmit Answer Sheet</button>
+
+                      {uploadStatus.message && (
+                        <div className={`mt-2 p-3 rounded-lg text-[11px] font-bold border ${
+                          uploadStatus.success === true ? 'bg-emerald-50 text-emerald-900 border-emerald-200' :
+                          uploadStatus.success === false ? 'bg-rose-50 text-rose-900 border-rose-200' : 'bg-slate-50 text-slate-700 border-slate-200'
+                        }`}>
+                          {uploadStatus.message}
+                        </div>
+                      )}
                     </form>
                   </div>
                 </div>
               ) : (
-                <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                  <p className="text-sm font-black text-slate-700">🔒 System locked. No active synchronized examination stream is open right now.</p>
-                  <p className="text-xs text-blue-600 font-bold bg-blue-50/60 inline-block px-4 py-1.5 rounded-lg border border-blue-100">
-                    💡 The next exam will be available on <span className="underline">{nextExamPrediction.day}</span>: <span className="font-black font-mono">{nextExamPrediction.code}</span> ({nextExamPrediction.type})
-                  </p>
-                  <p className="text-[10px] text-slate-400 font-medium block pt-1">Please report to the portal according to your class time-frame parameters (9:00 PM - 12:00 AM strictly).</p>
+                <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-xl">
+                  <p className="text-sm font-bold text-slate-500">No open streams recorded.</p>
                 </div>
               )}
             </div>

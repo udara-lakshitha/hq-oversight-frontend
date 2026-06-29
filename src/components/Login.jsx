@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Dashboard from './Dashboard';
 
-// 🌍 Centralized Vite Environment Base URL Configuration
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
 export default function Login({ setView }) {
@@ -46,7 +45,6 @@ export default function Login({ setView }) {
     const existingDeviceToken = localStorage.getItem('device_token');
 
     try {
-      // 🔌 Bound dynamically via Vite runtime configurations
       const response = await axios.post(`${API_BASE_URL}/auth/login`, {
         email: email,
         password: password,
@@ -75,7 +73,6 @@ export default function Login({ setView }) {
     setShowToast(false);
 
     try {
-      // 🔌 Bound dynamically via Vite runtime configurations
       const response = await axios.post(`${API_BASE_URL}/auth/verify-otp`, {
         email: email,
         otp_code: otpCode,
@@ -95,7 +92,6 @@ export default function Login({ setView }) {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 relative overflow-hidden">
       
-      {/* Toast Alert Notification Interface Banner */}
       <div className={`fixed top-6 right-6 z-50 transform transition-all duration-300 ease-out max-w-sm w-full ${
         showToast ? 'translate-x-0 opacity-100' : 'translate-x-12 opacity-0 pointer-events-none'
       }`}>
@@ -121,7 +117,6 @@ export default function Login({ setView }) {
         </div>
       </div>
 
-      {/* Main Authentication Card Window Panel Content */}
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-100 p-8 space-y-6 z-10">
         <div>
           <button 

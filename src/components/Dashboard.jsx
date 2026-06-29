@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import axios from 'axios';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-
-const BACKEND_URL = 'http://127.0.0.1:8000';
+import api from '../config/api';
+import AnalyticsChart from './AnalyticsChart';
+import PerformanceTable from './PerformanceTable';
+import LiveExamWindow from './LiveExamWindow';
 
 const MOCK_LIVE_MODE = false;
 
@@ -23,22 +23,13 @@ export default function Dashboard({ student }) {
   const [uploadStatus, setUploadStatus] = useState({ success: null, message: '' });
 
   const [countdownString, setCountdownString] = useState('');
-
-
   const [message, setMessage] = useState('');
   const [isError, setIsError] = useState(false);
   const [showToast, setShowToast] = useState(false);
 
-  const getAuthHeader = () => {
-    const token = localStorage.getItem('access_token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
-
   useEffect(() => {
     if (!showToast) return;
-    const toastTimer = setTimeout(() => {
-      setShowToast(false);
-    }, 2000); 
+    const toastTimer = setTimeout(() => setShowToast(false), 2000); 
     return () => clearTimeout(toastTimer);
   }, [showToast]);
 
@@ -52,9 +43,7 @@ export default function Dashboard({ student }) {
     const fetchStudentMarks = async () => {
       try {
         setIsLoading(true);
-        const response = await axios.get(`${BACKEND_URL}/api/marks/student/${student.id}`, {
-          headers: getAuthHeader()
-        });
+        const response = await api.get(`/api/marks/student/${student.id}`);
         setDbMarks(response.data);
       } catch (err) {
         console.error("Failed to sync metrics:", err);
@@ -64,9 +53,7 @@ export default function Dashboard({ student }) {
       }
     };
 
-    if (student?.id) {
-      fetchStudentMarks();
-    }
+    if (student?.id) fetchStudentMarks();
   }, [student?.id]);
 
   useEffect(() => {
@@ -77,9 +64,7 @@ export default function Dashboard({ student }) {
           setUploadStatus({ success: null, message: '' });
           setSelectedFile(null);
           try {
-            const activeRes = await axios.get(`${BACKEND_URL}/api/exams/live-session`, {
-              headers: getAuthHeader()
-            });
+            const activeRes = await api.get('/api/exams/live-session');
             setActivePaper(activeRes.data);
             setErrorMsg(''); 
           } catch (err) {
@@ -89,9 +74,7 @@ export default function Dashboard({ student }) {
         }
 
         if (activeTab === 'past-papers') {
-          const pastRes = await axios.get(`${BACKEND_URL}/api/marks/past-papers`, {
-            headers: getAuthHeader()
-          });
+          const pastRes = await api.get('/api/marks/past-papers');
           setPastPapers(pastRes.data);
         }
       } catch (err) {
@@ -114,9 +97,7 @@ export default function Dashboard({ student }) {
   const handleDownloadPaper = async (examId, paperTitle) => {
     try {
       showNotification(`Initializing question sheet download for ${paperTitle}...`, false);
-      const response = await axios.get(`${BACKEND_URL}/api/exams/stream-paper/${examId}`, {
-        headers: getAuthHeader(), responseType: 'blob'
-      });
+      const response = await api.get(`/api/exams/stream-paper/${examId}`, { responseType: 'blob' });
       const fileUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const fileLink = document.createElement('a');
       fileLink.href = fileUrl;
@@ -133,9 +114,7 @@ export default function Dashboard({ student }) {
   const handleDownloadScheme = async (examId, paperTitle) => {
     try {
       showNotification(`Requesting secure marking matrix key for ${paperTitle}...`, false);
-      const response = await axios.get(`${BACKEND_URL}/api/marks/stream-scheme/${examId}`, {
-        headers: getAuthHeader(), responseType: 'blob'
-      });
+      const response = await api.get(`/api/marks/stream-scheme/${examId}`, { responseType: 'blob' });
       const fileUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const fileLink = document.createElement('a');
       fileLink.href = fileUrl;
@@ -162,8 +141,8 @@ export default function Dashboard({ student }) {
 
     try {
       setUploadStatus({ success: null, message: 'Uploading answer configuration trace...' });
-      await axios.post(`${BACKEND_URL}/api/exams/submit-live/${examId}`, formPayload, {
-        headers: { ...getAuthHeader(), 'Content-Type': 'multipart/form-data' }
+      await api.post(`/api/exams/submit-live/${examId}`, formPayload, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
       setUploadStatus({ success: true, message: '✅ Submission transmitted successfully!' });
       showNotification('🚀 Answer script uploaded successfully!', false);
@@ -290,26 +269,18 @@ export default function Dashboard({ student }) {
         showToast ? 'translate-x-0 opacity-100' : 'translate-x-12 opacity-0 pointer-events-none'
       }`}>
         <div className={`p-4 rounded-lg shadow-2xl border flex items-start gap-3 ${
-          isError 
-            ? 'bg-red-50 border-red-200 text-red-950' 
-            : 'bg-[#EBF7EE] border-[#1BA94C] text-[#194D26]'
+          isError ? 'bg-red-50 border-red-200 text-red-950' : 'bg-[#EBF7EE] border-[#1BA94C] text-[#194D26]'
         }`}>
-          <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-black text-white ${
-            isError ? 'bg-red-600' : 'bg-[#1BA94C]'
-          }`}>
+          <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-black text-white ${isError ? 'bg-red-600' : 'bg-[#1BA94C]'}`}>
             {isError ? '!' : '✓'}
           </div>
-
           <div className="flex-1 space-y-0.5">
             <h4 className={`text-xs font-black tracking-wider uppercase ${isError ? 'text-red-800' : 'text-[#1AA148]'}`}>
               {isError ? 'System Exception Error' : 'Success'}
             </h4>
             <p className="text-xs font-bold leading-relaxed opacity-95">{message}</p>
           </div>
-
-          <button onClick={() => setShowToast(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xs px-1 cursor-pointer">
-            ✕
-          </button>
+          <button onClick={() => setShowToast(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xs px-1 cursor-pointer">✕</button>
         </div>
       </div>
 
@@ -335,66 +306,15 @@ export default function Dashboard({ student }) {
               <div className="bg-white p-12 text-center rounded-2xl text-sm font-bold text-slate-400">🔄 Syncing performance tables from database records...</div>
             ) : (
               <>
-                <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xl space-y-4">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <h3 className="text-lg font-black text-slate-900">Progression Vector Analytics</h3>
-                    <div className="flex bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold border border-slate-200">
-                      <button onClick={() => setSubjectFilter('ALL')} className={`px-2.5 py-1 rounded-md cursor-pointer ${subjectFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'}`}>All</button>
-                      <button onClick={() => setSubjectFilter('PURE')} className={`px-2.5 py-1 rounded-md cursor-pointer ${subjectFilter === 'PURE' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500'}`}>Pure</button>
-                      <button onClick={() => setSubjectFilter('APPLIED')} className={`px-2.5 py-1 rounded-md cursor-pointer ${subjectFilter === 'APPLIED' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500'}`}>Applied</button>
-                    </div>
-                  </div>
-                  <div className="h-60 w-full">
-                    {unifiedHistoryData.length === 0 ? (
-                      <div className="h-full flex items-center justify-center text-xs font-bold text-slate-400 border border-dashed border-slate-200 rounded-xl">No structural historical marks detected for this profile yet.</div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={unifiedHistoryData.filter(i => i.marks !== null)}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis dataKey="id" tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
-                          <YAxis domain={[0, 100]} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
-                          <Tooltip />
-                          <Area type="monotone" dataKey="marks" stroke="#2563eb" fillOpacity={0.1} fill="#2563eb" />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-2xl border border-slate-100 shadow-xl overflow-hidden">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-100 font-black text-slate-400 uppercase">
-                        <th className="px-5 py-3">Reference</th>
-                        <th className="px-5 py-3">Type</th>
-                        <th className="px-5 py-3">Score</th>
-                        <th className="px-5 py-3">Delta Growth</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-bold text-slate-600">
-                      {unifiedHistoryData.length === 0 ? (
-                        <tr>
-                          <td colSpan="4" className="px-5 py-8 text-center font-bold text-slate-400 italic">No score records found on database traces.</td>
-                        </tr>
-                      ) : (
-                        [...unifiedHistoryData].reverse().slice(0, visibleRows).map((paper) => (
-                          <tr key={paper.id} className="hover:bg-slate-50">
-                            <td className="px-5 py-3.5 font-black text-slate-900">{paper.name}</td>
-                            <td className="px-5 py-3.5">
-                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${paper.type === 'Pure Maths' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>{paper.type}</span>
-                            </td>
-                            <td className="px-5 py-3.5 font-black">{paper.marks}%</td>
-                            <td className="px-5 py-3.5">
-                              {paper.trendText ? (
-                                <span className={`px-1.5 py-0.5 rounded ${paper.isPositive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>{paper.trendArrow} {paper.trendText}</span>
-                              ) : <span className="text-slate-400 italic">Baseline Entry</span>}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                <AnalyticsChart 
+                  data={unifiedHistoryData} 
+                  subjectFilter={subjectFilter} 
+                  setSubjectFilter={setSubjectFilter} 
+                />
+                <PerformanceTable 
+                  data={unifiedHistoryData} 
+                  visibleRows={visibleRows} 
+                />
               </>
             )}
           </div>
@@ -402,53 +322,17 @@ export default function Dashboard({ student }) {
 
         {activeTab === 'weekly' && (
           <div className="space-y-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xl space-y-4">
-              <div className="border-b border-slate-100 pb-3 flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
-                <div>
-                  <span className={`border text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full tracking-wider ${(activePaper || MOCK_LIVE_MODE) ? 'bg-red-50 text-red-600 border-red-200 animate-pulse' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-                    {(activePaper || MOCK_LIVE_MODE) ? '🔴 Active Exam Session' : '🔒 Portal Locked'}
-                  </span>
-                  <h3 className="text-lg font-black text-slate-900 mt-2">Synchronized Examination Gate</h3>
-                </div>
-                <div className="px-4 py-2 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl text-xs font-black font-mono shadow-xs animate-pulse">
-                  {countdownString}
-                </div>
-              </div>
-
-              {loadingExams ? (
-                <div className="text-center font-bold text-slate-500 py-8">Synchronizing state tracking routes...</div>
-              ) : errorMsg && !MOCK_LIVE_MODE ? (
-                <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-xl">
-                  <p className="text-sm font-black text-slate-700">🔒 Gate Status: {errorMsg}</p>
-                </div>
-              ) : (activePaper || MOCK_LIVE_MODE) ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-blue-100 text-blue-800">{activePaper?.paper_type || 'Standard Module'}</span>
-                      <h4 className="text-md font-bold text-slate-900 mt-2">{activePaper?.paper_number || 'HQ Current'}: {activePaper?.title || 'Active Dynamic Examination Sheet'}</h4>
-                    </div>
-                    <button onClick={() => handleDownloadPaper(activePaper?.id || 1, activePaper?.title || 'Paper')} className="mt-4 w-full py-2 bg-blue-600 text-white font-bold text-xs rounded-lg cursor-pointer">📥 Download Question Sheet</button>
-                  </div>
-
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                    <form onSubmit={(e) => handleAnswerUploadSubmit(e, activePaper?.id || 1)} className="space-y-3">
-                      <div className="border-2 border-dashed border-slate-200 rounded-lg p-4 bg-white text-center relative">
-                        <input type="file" accept=".pdf" onChange={(e) => setSelectedFile(e.target.files[0])} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
-                        <p className="text-xs font-bold text-slate-600">{selectedFile ? `📄 ${selectedFile.name}` : 'Select answer sheet PDF'}</p>
-                      </div>
-                      <button type="submit" className="w-full py-2 bg-emerald-600 text-white font-bold text-xs rounded-lg cursor-pointer">🚀 Transmit Answer Sheet</button>
-
-                      {uploadStatus.message && (
-                        <div className="mt-2 p-3 bg-slate-50 text-slate-700 text-[11px] font-bold border border-slate-200 rounded-lg">
-                          {uploadStatus.message}
-                        </div>
-                      )}
-                    </form>
-                  </div>
-                </div>
-              ) : null}
-            </div>
+            <LiveExamWindow 
+              activePaper={activePaper}
+              countdownString={countdownString}
+              loadingExams={loadingExams}
+              errorMsg={errorMsg}
+              MOCK_LIVE_MODE={MOCK_LIVE_MODE}
+              selectedFile={selectedFile}
+              setSelectedFile={setSelectedFile}
+              handleAnswerUploadSubmit={handleAnswerUploadSubmit}
+              handleDownloadPaper={handleDownloadPaper}
+            />
           </div>
         )}
 
@@ -479,12 +363,8 @@ export default function Dashboard({ student }) {
                         <td className="px-5 py-3.5 font-medium text-slate-700">{paper.title}</td>
                         <td className="px-5 py-3.5">
                           <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
-                            paper.paper_type === 'Pure Maths' 
-                              ? 'bg-blue-50 text-blue-700' 
-                              : 'bg-emerald-50 text-emerald-700'
-                          }`}>
-                            {paper.paper_type}
-                          </span>
+                            paper.paper_type === 'Pure Maths' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
+                          }`}>{paper.paper_type}</span>
                         </td>
                         <td className="px-5 py-3.5 text-right space-x-1.5">
                           <button onClick={() => handleDownloadPaper(paper.id, paper.title)} className="px-2.5 py-1.5 bg-slate-100 text-slate-800 text-[11px] font-bold rounded-md cursor-pointer">📄 Questions</button>

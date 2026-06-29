@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../config/api'; // Migrated to unified config client
 import Dashboard from './Dashboard';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
 export default function Login({ setView }) {
   const [email, setEmail] = useState('');
@@ -45,7 +43,8 @@ export default function Login({ setView }) {
     const existingDeviceToken = localStorage.getItem('device_token');
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/login`, {
+      // Replaced raw axios with configured api instance
+      const response = await api.post('/auth/login', {
         email: email,
         password: password,
         device_token: existingDeviceToken || null,
@@ -73,7 +72,8 @@ export default function Login({ setView }) {
     setShowToast(false);
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/verify-otp`, {
+      // Replaced raw axios with configured api instance
+      const response = await api.post('/auth/verify-otp', {
         email: email,
         otp_code: otpCode,
       });

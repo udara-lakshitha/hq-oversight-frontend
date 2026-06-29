@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+import api from '../config/api'; // Migrated fetch engine to unified axios config client
 
 export default function RegisterForm({ setView }) {
   const [name, setName] = useState('');
@@ -45,28 +44,18 @@ export default function RegisterForm({ setView }) {
     };
 
     try {
-      const response = await fetch(`${API_BASE_URL}/students/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      // Swapped verbose fetch setup out for clean api syntax
+      const response = await api.post('/students/', payload);
 
-      const data = await response.json();
-
-      if (response.ok) {
-        setIsError(false);
-        setMessage(`Success! Profile built. Assigned ID: STU-${data.id.toString().padStart(4, '0')}`);
-        setShowToast(true);
-        setName(''); setEmail(''); setPhoneNumber(''); setPassword('');
-        setCountdown(3);
-      } else {
-        setIsError(true);
-        setMessage(data.detail || 'Registration parameters failed architectural validation checks.');
-        setShowToast(true);
-      }
+      setIsError(false);
+      setMessage(`Success! Profile built. Assigned ID: STU-${response.data.id.toString().padStart(4, '0')}`);
+      setShowToast(true);
+      setName(''); setEmail(''); setPhoneNumber(''); setPassword('');
+      setCountdown(3);
     } catch (error) {
       setIsError(true);
-      setMessage('Network connectivity failure. Ensure FastAPI engine is online.');
+      // Clean axios-based server details or generic fallback message processing
+      setMessage(error.response?.data?.detail || 'Registration failed or server connection timed out.');
       setShowToast(true);
     }
   };

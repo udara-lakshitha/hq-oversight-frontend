@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useReducer, useCallback } from 'react';
 import api from '../config/api';
 import AnalyticsChart from './AnalyticsChart';
 import PerformanceTable from './PerformanceTable';
@@ -6,157 +6,265 @@ import LiveExamWindow from './LiveExamWindow';
 
 const MOCK_LIVE_MODE = false;
 
+const STATUS = {
+  IDLE: 'IDLE',
+  LOADING: 'LOADING',
+  READY: 'READY',
+  ERROR: 'ERROR'
+};
+
+const dashboardReducer = (state, action) => {
+  switch (action.type) {
+    case 'FETCH_INIT':
+      return { ...state, status: STATUS.LOADING, errorMsg: '' };
+    case 'FETCH_SUCCESS':
+      return {
+        ...state,
+        status: STATUS.READY,
+        pastPapers: action.payload.pastPapers,
+        dbMarks: action.payload.dbMarks,
+        errorMsg: ''
+      };
+    case 'FETCH_FAILURE':
+      return { ...state, status: STATUS.ERROR, errorMsg: action.payload };
+    case 'UPDATE_PAST_PAPERS':
+      return { ...state, pastPapers: action.payload };
+    case 'UPDATE_LIVE_PAPER':
+      return { ...state, activePaper: action.payload };
+    default:
+      return state;
+  }
+};
+
+const INITIAL_STATE = {
+  status: STATUS.IDLE,
+  pastPapers: [],
+  dbMarks: [],
+  activePaper: null,
+  errorMsg: ''
+};
+
 export default function Dashboard({ student }) {
-  const [activeTab, setActiveTab] = useState('analytics'); 
+  const isAdmin = !student || student.role === 'admin';
+  const [activeTab, setActiveTab] = useState(isAdmin ? 'upload_papers' : 'analytics');
+  
+  const [state, dispatch] = useReducer(dashboardReducer, INITIAL_STATE);
+  const { status, pastPapers, dbMarks, activePaper, errorMsg } = state;
+
+  const [loadingExams, setLoadingExams] = useState(false);
+  const [pendingSubmissions, setPendingSubmissions] = useState([]);
+  const [gradebook, setGradebook] = useState([]);
   const [subjectFilter, setSubjectFilter] = useState('ALL');
   const [rangeFilter, setRangeFilter] = useState('ALL');
   const [visibleRows, setVisibleRows] = useState(5);
-  
-  const [dbMarks, setDbMarks] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [filterStudent, setFilterStudent] = useState('');
+  const [filterPaper, setFilterPaper] = useState('');
 
-  const [activePaper, setActivePaper] = useState(null);
-  const [pastPapers, setPastPapers] = useState([]);
-  const [loadingExams, setLoadingExams] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [uploadStatus, setUploadStatus] = useState({ success: null, message: '' });
+  const [paperNumber, setPaperNumber] = useState('');
+  const [paperTitle, setPaperTitle] = useState('');
+  const [paperType, setPaperType] = useState('Pure Maths');
+  const [qFile, setQFile] = useState(null);
+  const [mFile, setMFile] = useState(null);
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
+  const [assignedMark, setAssignedMark] = useState('');
+  const [feedbackFile, setFeedbackFile] = useState(null);
 
   const [countdownString, setCountdownString] = useState('');
   const [message, setMessage] = useState('');
   const [isError, setIsError] = useState(false);
   const [showToast, setShowToast] = useState(false);
 
-  useEffect(() => {
-    if (!showToast) return;
-    const toastTimer = setTimeout(() => setShowToast(false), 2000); 
-    return () => clearTimeout(toastTimer);
-  }, [showToast]);
+  const getDeviceHeaders = useCallback(() => {
+    const token = localStorage.getItem('device_token') || '';
+    return { 'X-Device-Token': token };
+  }, []);
 
-  const showNotification = (msg, errorStatus = false) => {
+  const showNotification = useCallback((msg, errorStatus = false) => {
     setMessage(msg);
     setIsError(errorStatus);
     setShowToast(true);
-  };
+  }, []);
 
   useEffect(() => {
-    const fetchStudentMarks = async () => {
-      try {
-        setIsLoading(true);
-        const response = await api.get(`/api/marks/student/${student.id}`);
-        setDbMarks(response.data);
-      } catch (err) {
-        console.error("Failed to sync metrics:", err);
-        setErrorMsg('Could not load performance logs from the server.');
-      } finally {
-        setIsLoading(false);
+    if (!showToast) return;
+    const toastTimer = setTimeout(() => setShowToast(false), 2000);
+    return () => clearTimeout(toastTimer);
+  }, [showToast]);
+
+  const loadCoreMetrics = useCallback(async () => {
+    dispatch({ type: 'FETCH_INIT' });
+    try {
+      const pastPapersPromise = api.get('/api/marks/past-papers');
+      const studentMarksPromise = (!isAdmin && student?.id)
+        ? api.get(`/api/marks/student/${student.id}`)
+        : Promise.resolve({ data: [] });
+
+      const [pastResults, marksResults] = await Promise.allSettled([
+        pastPapersPromise,
+        studentMarksPromise
+      ]);
+
+      let directPapers = [];
+      let directMarks = [];
+
+      if (pastResults.status === 'fulfilled' && pastResults.value?.data) {
+        directPapers = pastResults.value.data;
+      } else {
+        console.error("Past papers archive endpoint failure:", pastResults.reason);
       }
-    };
 
-    if (student?.id) fetchStudentMarks();
-  }, [student?.id]);
+      if (marksResults.status === 'fulfilled' && marksResults.value?.data) {
+        directMarks = marksResults.value.data;
+      } else {
+        console.warn("Student marks history record empty or currently offline.");
+      }
+
+      dispatch({
+        type: 'FETCH_SUCCESS',
+        payload: {
+          pastPapers: directPapers,
+          dbMarks: directMarks
+        }
+      });
+    } catch (err) {
+      console.error("Critical Data Layer Fault:", err);
+      dispatch({ type: 'FETCH_FAILURE', payload: 'Could not resolve backend response arrays.' });
+    }
+  }, [student?.id, isAdmin]);
 
   useEffect(() => {
-    const fetchExamData = async () => {
+    loadCoreMetrics();
+  }, [loadCoreMetrics]);
+
+  useEffect(() => {
+    const fetchTabSpecificData = async () => {
       setLoadingExams(true);
       try {
-        if (activeTab === 'weekly') {
-          setUploadStatus({ success: null, message: '' });
-          setSelectedFile(null);
-          try {
-            const activeRes = await api.get('/api/exams/live-session');
-            setActivePaper(activeRes.data);
-            setErrorMsg(''); 
-          } catch (err) {
-            setErrorMsg(err.response?.data?.detail || "Failed to synchronize live exam.");
-            setActivePaper(null);
+        if (!isAdmin) {
+          if (activeTab === 'weekly') {
+            setQFile(null);
+            try {
+              const activeRes = await api.get('/api/exams/live-session', { headers: getDeviceHeaders() });
+              dispatch({ type: 'UPDATE_LIVE_PAPER', payload: activeRes.data });
+            } catch (err) {
+              dispatch({ type: 'UPDATE_LIVE_PAPER', payload: null });
+            }
+          }
+        } else {
+          if (activeTab === 'submissions') {
+            const res = await api.get('/api/marks/admin/pending-submissions');
+            setPendingSubmissions(res.data);
+          }
+          if (activeTab === 'view_marks') {
+            const res = await api.get('/api/marks/admin/gradebook');
+            setGradebook(res.data);
           }
         }
-
-        if (activeTab === 'past-papers') {
-          const pastRes = await api.get('/api/marks/past-papers');
-          setPastPapers(pastRes.data);
-        }
       } catch (err) {
-        console.error("Failed to query exam system registries:", err);
+        console.error("Tab Synchronization Fault:", err);
       } finally {
         setLoadingExams(false);
       }
     };
+    fetchTabSpecificData();
+  }, [activeTab, isAdmin, getDeviceHeaders]);
 
-    fetchExamData();
-  }, [activeTab]);
+  const handleAdminUploadSubmit = async (e, mode) => {
+    e.preventDefault();
+    const formData = new FormData();
+    formData.append("paper_number", paperNumber);
+    formData.append("title", paperTitle);
+    formData.append("paper_type", paperType);
+    
+    if (mode === 'paper' && qFile) formData.append("question_file", qFile);
+    if (mode === 'scheme' && mFile) formData.append("marking_scheme_file", mFile);
 
-  const greetingMessage = useMemo(() => {
-    const hours = new Date().getHours();
-    if (hours < 12) return "Good Morning";
-    if (hours < 17) return "Good Afternoon";
-    return "Good Evening";
-  }, []);
-
-  const handleDownloadPaper = async (examId, paperTitle) => {
     try {
-      showNotification(`Initializing question sheet download for ${paperTitle}...`, false);
-      const response = await api.get(`/api/exams/stream-paper/${examId}`, { responseType: 'blob' });
-      const fileUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-      const fileLink = document.createElement('a');
-      fileLink.href = fileUrl;
-      fileLink.setAttribute('download', `${paperTitle}_Questions.pdf`);
-      document.body.appendChild(fileLink);
-      fileLink.click();
-      fileLink.remove();
-      showNotification('📥 Question paper downloaded successfully!', false);
+      await api.post('/api/marks/admin/upload-exam', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      showNotification("Assets successfully processed and committed!", false);
+      setPaperNumber(''); setPaperTitle(''); setQFile(null); setMFile(null);
+      
+      const pastRes = await api.get('/api/marks/past-papers');
+      dispatch({ type: 'UPDATE_PAST_PAPERS', payload: pastRes.data || [] });
     } catch (err) {
-      showNotification('❌ Unable to download target question paper resource file.', true);
+      showNotification("Asset upload failed.", true);
     }
   };
 
-  const handleDownloadScheme = async (examId, paperTitle) => {
+  const handleEvaluationSubmit = async (e) => {
+    e.preventDefault();
+    if (!feedbackFile) return showNotification("Please choose an evaluated feedback file.", true);
+
+    const formData = new FormData();
+    formData.append("student_id", selectedSubmission.student_id);
+    formData.append("exam_id", selectedSubmission.exam_id);
+    formData.append("marks", assignedMark);
+    formData.append("file", feedbackFile);
+
     try {
-      showNotification(`Requesting secure marking matrix key for ${paperTitle}...`, false);
+      await api.post('/api/marks/admin/submit-review', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      showNotification("Evaluation saved successfully.", false);
+      setSelectedSubmission(null); setAssignedMark(''); setFeedbackFile(null);
+      const res = await api.get('/api/marks/admin/pending-submissions');
+      setPendingSubmissions(res.data);
+    } catch (err) {
+      showNotification("Failed saving submission metrics review.", true);
+    }
+  };
+
+  const handleDownloadPaper = async (examId, title) => {
+    try {
+      showNotification(`Initializing download for ${title}...`, false);
+      const response = await api.get(`/api/exams/stream-paper/${examId}`, { responseType: 'blob', headers: getDeviceHeaders() });
+      const fileUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const fileLink = document.createElement('a');
+      fileLink.href = fileUrl;
+      fileLink.setAttribute('download', `${title}_Questions.pdf`);
+      document.body.appendChild(fileLink);
+      fileLink.click();
+      fileLink.remove();
+    } catch (err) {
+      showNotification('❌ Unable to download target resource.', true);
+    }
+  };
+
+  const handleDownloadScheme = async (examId, title) => {
+    try {
       const response = await api.get(`/api/marks/stream-scheme/${examId}`, { responseType: 'blob' });
       const fileUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const fileLink = document.createElement('a');
       fileLink.href = fileUrl;
-      fileLink.setAttribute('download', `${paperTitle}_Marking_Scheme.pdf`);
+      fileLink.setAttribute('download', `${title}_Marking_Scheme.pdf`);
       document.body.appendChild(fileLink);
       fileLink.click();
       fileLink.remove();
-      showNotification('🔑 Marking scheme downloaded cleanly!', false);
     } catch (err) {
-      const deniedMsg = err.response?.data?.detail || "Access Denied: Ensure your paper has been evaluated first.";
-      showNotification(`🔒 ${deniedMsg}`, true);
+      showNotification(`🔒 ${err.response?.data?.detail || "Access Denied."}`, true);
     }
   };
 
   const handleAnswerUploadSubmit = async (e, examId) => {
     e.preventDefault();
-    if (!selectedFile) {
-      showNotification('⚠️ Please select a clean PDF file matrix to upload.', true);
-      return;
-    }
-
+    if (!qFile) return showNotification('PDF matrix file needed.', true);
+    
     const formPayload = new FormData();
-    formPayload.append('file', selectedFile);
-
+    formPayload.append('file', qFile);
     try {
-      setUploadStatus({ success: null, message: 'Uploading answer configuration trace...' });
       await api.post(`/api/exams/submit-live/${examId}`, formPayload, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data', ...getDeviceHeaders() }
       });
-      setUploadStatus({ success: true, message: '✅ Submission transmitted successfully!' });
       showNotification('🚀 Answer script uploaded successfully!', false);
-      setSelectedFile(null);
+      setQFile(null);
     } catch (err) {
-      const failMsg = err.response?.data?.detail || 'Transmission failed.';
-      setUploadStatus({ success: false, message: failMsg });
-      showNotification(`❌ Upload Failed: ${failMsg}`, true);
+      showNotification(`❌ Upload Failed: ${err.response?.data?.detail}`, true);
     }
   };
 
   const nextExamPrediction = useMemo(() => {
     let maxNum = 0;
-    const combinedList = [...dbMarks, ...pastPapers];
+    const combinedList = [...pastPapers];
     if (activePaper) combinedList.push(activePaper);
 
     combinedList.forEach(p => {
@@ -166,11 +274,18 @@ export default function Dashboard({ student }) {
         if (!isNaN(parsed) && parsed > maxNum) maxNum = parsed;
       }
     });
-    return { code: `HQ ${maxNum > 0 ? maxNum + 1 : 1}` };
-  }, [dbMarks, pastPapers, activePaper]);
+    return { code: `HQ ${maxNum + 1}` };
+  }, [pastPapers, activePaper]);
 
   useEffect(() => {
+    if (isAdmin) return;
+
     const updateSystemClock = () => {
+      if (status !== STATUS.READY) {
+        setCountdownString("Synchronizing global calendar matrices...");
+        return;
+      }
+
       if (MOCK_LIVE_MODE || activePaper) {
         if (MOCK_LIVE_MODE && !activePaper) {
           setCountdownString("You have only 02:14:30 remaining");
@@ -189,7 +304,7 @@ export default function Dashboard({ student }) {
         } else {
           const displayDistance = distance <= 0 ? 8070000 : distance; 
           const hours = String(Math.floor((displayDistance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))).padStart(2, '0');
-          const minutes = String(Math.floor((displayDistance % (1000 * 60 * 60)) / (1000 * 60))).padStart(2, '0');
+          const minutes = String(Math.floor((displayDistance % (1000 * 60)) / (1000 * 60))).padStart(2, '0');
           const seconds = String(Math.floor((displayDistance % (1000 * 60)) / 1000)).padStart(2, '0');
           setCountdownString(`You have only ${hours}:${minutes}:${seconds} remaining`);
         }
@@ -226,7 +341,14 @@ export default function Dashboard({ student }) {
     updateSystemClock();
     const clockInterval = setInterval(updateSystemClock, 1000);
     return () => clearInterval(clockInterval);
-  }, [activePaper, nextExamPrediction, errorMsg]);
+  }, [activePaper, nextExamPrediction, errorMsg, isAdmin, status]);
+
+  const greetingMessage = useMemo(() => {
+    const hours = new Date().getHours();
+    if (hours < 12) return "Good Morning";
+    if (hours < 17) return "Good Afternoon";
+    return "Good Evening";
+  }, []);
 
   const unifiedHistoryData = useMemo(() => {
     const processed = dbMarks.map((item) => {
@@ -240,20 +362,21 @@ export default function Dashboard({ student }) {
         created_at: item.created_at
       };
     });
-
+    
     let sortedData = processed.sort((a, b) => a.id.localeCompare(b.id));
+    
     sortedData = sortedData.map((item, index) => {
-      let trendArrow = null; let trendText = ''; let isPositive = true;
+      let trendArrow = null; let trendText = '';
       for (let i = index - 1; i >= 0; i--) {
         if (sortedData[i].type === item.type) {
           const diff = item.marks - sortedData[i].marks;
-          if (diff > 0) { trendArrow = '↑'; trendText = `+${diff}%`; isPositive = true; }
-          else if (diff < 0) { trendArrow = '↓'; trendText = `${diff}%`; isPositive = false; }
-          else { trendArrow = '→'; trendText = '0%'; isPositive = true; }
+          if (diff > 0) { trendArrow = '↑'; trendText = `+${diff}%`; }
+          else if (diff < 0) { trendArrow = '↓'; trendText = `${diff}%`; }
+          else { trendArrow = '→'; trendText = '0%'; }
           break;
         }
       }
-      return { ...item, trendArrow, trendText, isPositive };
+      return { ...item, trendArrow, trendText };
     });
 
     if (subjectFilter === 'PURE') sortedData = sortedData.filter(p => p.type === 'Pure Maths');
@@ -262,120 +385,290 @@ export default function Dashboard({ student }) {
     return sortedData;
   }, [dbMarks, subjectFilter, rangeFilter]);
 
+  const filteredGradebook = gradebook.filter(record => {
+    const matchStudent = record.student_name.toLowerCase().includes(filterStudent.toLowerCase());
+    const matchPaper = record.paper_number.toLowerCase().includes(filterPaper.toLowerCase()) || 
+                       record.paper_title.toLowerCase().includes(filterPaper.toLowerCase());
+    return matchStudent && matchPaper;
+  });
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 w-full font-sans antialiased relative overflow-hidden">
-      
-      <div className={`fixed top-6 right-6 z-50 transform transition-all duration-300 ease-out max-w-sm w-full ${
-        showToast ? 'translate-x-0 opacity-100' : 'translate-x-12 opacity-0 pointer-events-none'
-      }`}>
-        <div className={`p-4 rounded-lg shadow-2xl border flex items-start gap-3 ${
-          isError ? 'bg-red-50 border-red-200 text-red-950' : 'bg-[#EBF7EE] border-[#1BA94C] text-[#194D26]'
-        }`}>
-          <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-black text-white ${isError ? 'bg-red-600' : 'bg-[#1BA94C]'}`}>
-            {isError ? '!' : '✓'}
-          </div>
+      <div className={`fixed top-6 right-6 z-50 transform transition-all duration-300 max-w-sm w-full ${showToast ? 'translate-x-0 opacity-100' : 'translate-x-12 opacity-0 pointer-events-none'}`}>
+        <div className={`p-4 rounded-lg shadow-2xl border flex items-start gap-3 ${isError ? 'bg-red-50 border-red-200 text-red-950' : 'bg-[#EBF7EE] border-[#1BA94C] text-[#194D26]'}`}>
+          <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-black text-white ${isError ? 'bg-red-600' : 'bg-[#1BA94C]'}`}>{isError ? '!' : '✓'}</div>
           <div className="flex-1 space-y-0.5">
-            <h4 className={`text-xs font-black tracking-wider uppercase ${isError ? 'text-red-800' : 'text-[#1AA148]'}`}>
-              {isError ? 'System Exception Error' : 'Success'}
-            </h4>
+            <h4 className={`text-xs font-black tracking-wider uppercase ${isError ? 'text-red-800' : 'text-[#1AA148]'}`}>{isError ? 'System Error' : 'Success'}</h4>
             <p className="text-xs font-bold leading-relaxed opacity-95">{message}</p>
           </div>
-          <button onClick={() => setShowToast(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xs px-1 cursor-pointer">✕</button>
+          <button onClick={() => setShowToast(false)} className="text-slate-400 text-xs cursor-pointer">✕</button>
         </div>
       </div>
 
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-5xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">{greetingMessage}, {student?.name || 'Student'}! 🎓</h1>
-            <p className="text-[11px] font-bold text-blue-600 uppercase tracking-widest mt-1">HQ-Oversight Control Module</p>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+              {isAdmin ? `Control Desk Matrix 🛠️` : `${greetingMessage}, ${student?.name || 'Student'}! 🎓`}
+            </h1>
+            <p className="text-[11px] font-bold text-blue-600 uppercase tracking-widest mt-1">
+              {isAdmin ? "ADMIN CONTROL CENTER" : "HQ-OVERSIGHT CONTROL MODULE"}
+            </p>
           </div>
 
           <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl border border-slate-200 gap-0.5">
-            <button onClick={() => setActiveTab('analytics')} className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer ${activeTab === 'analytics' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500'}`}>Performance Dashboard</button>
-            <button onClick={() => setActiveTab('weekly')} className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer ${activeTab === 'weekly' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500'}`}>🗓️ Live Exam Window</button>
-            <button onClick={() => setActiveTab('past-papers')} className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer ${activeTab === 'past-papers' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500'}`}>📚 Past Papers Archive</button>
+            {isAdmin ? (
+              <>
+                <button onClick={() => setActiveTab('upload_papers')} className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer ${activeTab === 'upload_papers' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500'}`}>1. Upload Papers</button>
+                <button onClick={() => setActiveTab('upload_schemes')} className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer ${activeTab === 'upload_schemes' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500'}`}>2. Upload Schemes</button>
+                <button onClick={() => setActiveTab('submissions')} className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer ${activeTab === 'submissions' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500'}`}>3. Submissions Queue</button>
+                <button onClick={() => setActiveTab('view_marks')} className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer ${activeTab === 'view_marks' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500'}`}>4. View Marks Table</button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => setActiveTab('analytics')} className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer ${activeTab === 'analytics' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500'}`}>Performance Dashboard</button>
+                <button onClick={() => setActiveTab('weekly')} className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer ${activeTab === 'weekly' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500'}`}>🗓️ Live Exam Window</button>
+                <button onClick={() => setActiveTab('past-papers')} className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer ${activeTab === 'past-papers' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500'}`}>📚 Past Papers Archive</button>
+              </>
+            )}
           </div>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6">
-        {activeTab === 'analytics' && (
+        {isAdmin ? (
           <div className="space-y-6">
-            {isLoading ? (
-              <div className="bg-white p-12 text-center rounded-2xl text-sm font-bold text-slate-400">🔄 Syncing performance tables from database records...</div>
-            ) : (
-              <>
-                <AnalyticsChart 
-                  data={unifiedHistoryData} 
-                  subjectFilter={subjectFilter} 
-                  setSubjectFilter={setSubjectFilter} 
-                />
-                <PerformanceTable 
-                  data={unifiedHistoryData} 
-                  visibleRows={visibleRows} 
-                />
-              </>
+            {activeTab === 'upload_papers' && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xl max-w-2xl mx-auto">
+                <h3 className="text-lg font-black text-slate-900 mb-1">📄 Deploy Target Question Repository</h3>
+                <form onSubmit={(e) => handleAdminUploadSubmit(e, 'paper')} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Paper Code</label>
+                      <input type="text" placeholder="e.g. HQ 1" value={paperNumber} onChange={e => setPaperNumber(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none" />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Core Paper Title</label>
+                      <input type="text" placeholder="e.g. Pure Vectors Complex Equation" value={paperTitle} onChange={e => setPaperTitle(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Classification Category</label>
+                    <select value={paperType} onChange={e => setPaperType(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none">
+                      <option>Pure Maths</option>
+                      <option>Applied Maths</option>
+                    </select>
+                  </div>
+                  <div className="border border-dashed border-slate-200 rounded-xl p-6 bg-slate-50 text-center">
+                    <label className="block text-xs font-bold text-slate-600 cursor-pointer">
+                      📁 Select Question Paper PDF
+                      <input type="file" accept=".pdf" onChange={e => setQFile(e.target.files[0])} required className="hidden" />
+                      <span className="block text-[11px] text-blue-600 font-mono mt-1">{qFile ? `✔️ Ready: ${qFile.name}` : 'Drop target question sheet'}</span>
+                    </label>
+                  </div>
+                  <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 rounded-xl uppercase tracking-wider transition-colors">Commit Question Paper File</button>
+                </form>
+              </div>
+            )}
+
+            {activeTab === 'upload_schemes' && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xl max-w-2xl mx-auto">
+                <h3 className="text-lg font-black text-slate-900 mb-1">🔑 Deploy Secure Reference Marking Scheme</h3>
+                <form onSubmit={(e) => handleAdminUploadSubmit(e, 'scheme')} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Target Code</label>
+                      <input type="text" placeholder="e.g. HQ 1" value={paperNumber} onChange={e => setPaperNumber(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none" />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Core Paper Title</label>
+                      <input type="text" placeholder="e.g. Pure Vectors Complex Equation Layout" value={paperTitle} onChange={e => setPaperTitle(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none" />
+                    </div>
+                  </div>
+                  <div className="border border-dashed border-slate-200 rounded-xl p-6 bg-slate-50 text-center">
+                    <label className="block text-xs font-bold text-slate-600 cursor-pointer">
+                      🔑 Select Marking Scheme PDF
+                      <input type="file" accept=".pdf" onChange={e => setMFile(e.target.files[0])} required className="hidden" />
+                      <span className="block text-[11px] text-blue-600 font-mono mt-1">{mFile ? `✔️ Ready: ${mFile.name}` : 'Drop target validation layout'}</span>
+                    </label>
+                  </div>
+                  <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 rounded-xl uppercase tracking-wider transition-colors">Commit Marking Scheme File</button>
+                </form>
+              </div>
+            )}
+
+            {activeTab === 'submissions' && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-xl">
+                  <h3 className="text-md font-black text-slate-900 mb-1">📥 Pending Workspace Directory Queue</h3>
+                  {pendingSubmissions.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 text-xs italic border border-slate-200 border-dashed rounded-xl">No active un-evaluated answer traces found.</div>
+                  ) : (
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase">
+                          <th className="py-2">Paper Code</th>
+                          <th className="py-2">Student Entity Profile</th>
+                          <th className="py-2 text-right">Evaluation Desk</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                        {pendingSubmissions.map((sub) => (
+                          <tr key={sub.submission_id}>
+                            <td className="py-3 font-black text-blue-600">{sub.paper_number}</td>
+                            <td className="py-3 font-medium">{sub.student_name}</td>
+                            <td className="py-3 text-right">
+                              <button onClick={() => setSelectedSubmission(sub)} className="bg-blue-600 text-white px-3 py-1 font-bold rounded-md text-[11px] cursor-pointer">Grade Script</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+                
+                <div className="lg:col-span-1">
+                  {selectedSubmission ? (
+                    <div className="bg-white rounded-2xl border-2 border-blue-600 p-6 shadow-xl space-y-4">
+                      <h4 className="text-sm font-black text-slate-900">Grading Node: {selectedSubmission.student_name}</h4>
+                      <form onSubmit={handleEvaluationSubmit} className="space-y-3 text-xs">
+                        <div>
+                          <label className="block font-bold text-slate-500 mb-1">Score Mark Allocation (0-100)</label>
+                          <input type="number" step="0.1" value={assignedMark} onChange={e => setAssignedMark(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none" />
+                        </div>
+                        <div className="border border-dashed border-slate-200 rounded-lg p-3 bg-slate-50 text-center">
+                          <label className="block font-bold text-slate-600 cursor-pointer">
+                            📎 Upload Feedback PDF
+                            <input type="file" accept=".pdf" onChange={e => setFeedbackFile(e.target.files[0])} required className="hidden" />
+                            <span className="block text-[10px] text-slate-400 font-mono mt-1">{feedbackFile ? `✔️ ${feedbackFile.name}` : 'Select verified feedback file'}</span>
+                          </label>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <button type="submit" className="flex-1 bg-emerald-600 text-white py-1.5 font-bold rounded-lg cursor-pointer">Save Evaluation</button>
+                          <button type="button" onClick={() => setSelectedSubmission(null)} className="bg-slate-100 text-slate-600 px-2 rounded-lg cursor-pointer">Cancel</button>
+                        </div>
+                      </form>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-slate-400 text-xs border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">Select an item to evaluate.</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'view_marks' && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xl space-y-4">
+                <h3 className="text-md font-black text-slate-900">📊 Global Evaluation Registry Grid Ledger</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <input type="text" placeholder="🔎 Search by student name..." value={filterStudent} onChange={e => setFilterStudent(e.target.value)} className="bg-white border border-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none" />
+                  <input type="text" placeholder="📄 Search by paper configuration code..." value={filterPaper} onChange={e => setFilterPaper(e.target.value)} className="bg-white border border-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none" />
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase">
+                        <th className="py-2 px-2">Student Name</th>
+                        <th className="py-2 px-2">Paper Number</th>
+                        <th className="py-2 px-2">Operational Title</th>
+                        <th className="py-2 px-2 text-center">Score Grade</th>
+                        <th className="py-2 px-2 text-right">Grading Timestamp</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
+                      {filteredGradebook.length === 0 ? (
+                        <tr><td colSpan="5" className="text-center py-6 text-slate-400 italic">No evaluated entries found matching parameters.</td></tr>
+                      ) : (
+                        filteredGradebook.map((record, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/60">
+                            <td className="py-2.5 px-2 font-bold text-slate-900">{record.student_name}</td>
+                            <td className="py-2.5 px-2 text-blue-600 font-bold">{record.paper_number}</td>
+                            <td className="py-2.5 px-2 text-slate-600">{record.paper_title}</td>
+                            <td className="py-2.5 px-2 text-center"><span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-bold">{record.marks}%</span></td>
+                            <td className="py-2.5 px-2 text-right font-mono text-slate-400">{record.graded_at}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
           </div>
-        )}
-
-        {activeTab === 'weekly' && (
+        ) : (
           <div className="space-y-6">
-            <LiveExamWindow 
-              activePaper={activePaper}
-              countdownString={countdownString}
-              loadingExams={loadingExams}
-              errorMsg={errorMsg}
-              MOCK_LIVE_MODE={MOCK_LIVE_MODE}
-              selectedFile={selectedFile}
-              setSelectedFile={setSelectedFile}
-              handleAnswerUploadSubmit={handleAnswerUploadSubmit}
-              handleDownloadPaper={handleDownloadPaper}
-            />
-          </div>
-        )}
+            {activeTab === 'analytics' && (
+              <div className="space-y-6">
+                {status === STATUS.LOADING ? (
+                  <div className="bg-white p-12 text-center rounded-2xl text-sm font-bold text-slate-400">🔄 Syncing performance metrics...</div>
+                ) : (
+                  <>
+                    <AnalyticsChart data={unifiedHistoryData} subjectFilter={subjectFilter} setSubjectFilter={setSubjectFilter} />
+                    <PerformanceTable data={unifiedHistoryData} visibleRows={visibleRows} />
+                  </>
+                )}
+              </div>
+            )}
 
-        {activeTab === 'past-papers' && (
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-xl overflow-hidden">
-            <div className="p-4 border-b border-slate-100">
-              <h3 className="text-lg font-black text-slate-900">Concluded Archive Library</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100 font-black text-slate-400 uppercase">
-                    <th className="px-5 py-3">Module Code</th>
-                    <th className="px-5 py-3">Paper Title</th>
-                    <th className="px-5 py-3">Stream</th>
-                    <th className="px-5 py-3 text-right">Resource Downloads</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-bold text-slate-600">
-                  {pastPapers.length === 0 ? (
-                    <tr>
-                      <td colSpan="4" className="px-5 py-8 text-center font-bold text-slate-400 italic">No historical entries available in database archive logs.</td>
-                    </tr>
-                  ) : (
-                    pastPapers.map((paper) => (
-                      <tr key={paper.id} className="hover:bg-slate-50/50">
-                        <td className="px-5 py-3.5 font-black text-slate-900">{paper.paper_number}</td>
-                        <td className="px-5 py-3.5 font-medium text-slate-700">{paper.title}</td>
-                        <td className="px-5 py-3.5">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
-                            paper.paper_type === 'Pure Maths' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
-                          }`}>{paper.paper_type}</span>
-                        </td>
-                        <td className="px-5 py-3.5 text-right space-x-1.5">
-                          <button onClick={() => handleDownloadPaper(paper.id, paper.title)} className="px-2.5 py-1.5 bg-slate-100 text-slate-800 text-[11px] font-bold rounded-md cursor-pointer">📄 Questions</button>
-                          <button onClick={() => handleDownloadScheme(paper.id, paper.title)} className="px-2.5 py-1.5 bg-blue-50 text-blue-700 text-[11px] font-bold rounded-md cursor-pointer">🔑 Scheme</button>
-                        </td>
+            {activeTab === 'weekly' && (
+              <div className="space-y-6">
+                <LiveExamWindow 
+                  activePaper={activePaper}
+                  countdownString={countdownString}
+                  loadingExams={loadingExams}
+                  errorMsg={errorMsg}
+                  MOCK_LIVE_MODE={MOCK_LIVE_MODE}
+                  selectedFile={qFile}
+                  setSelectedFile={setQFile}
+                  handleAnswerUploadSubmit={handleAnswerUploadSubmit}
+                  handleDownloadPaper={handleDownloadPaper}
+                />
+              </div>
+            )}
+
+            {activeTab === 'past-papers' && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-xl overflow-hidden">
+                <div className="p-4 border-b border-slate-100">
+                  <h3 className="text-lg font-black text-slate-900">Concluded Archive Library</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100 font-black text-slate-400 uppercase">
+                        <th className="px-5 py-3">Module Code</th>
+                        <th className="px-5 py-3">Paper Title</th>
+                        <th className="px-5 py-3">Stream</th>
+                        <th className="px-5 py-3 text-right">Resource Downloads</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-bold text-slate-600">
+                      {status === STATUS.LOADING ? (
+                        <tr>
+                          <td colSpan="4" className="px-5 py-8 text-center text-slate-400 font-bold">Synchronizing repository...</td>
+                        </tr>
+                      ) : pastPapers.length === 0 ? (
+                        <tr>
+                          <td colSpan="4" className="px-5 py-8 text-center font-bold text-slate-400 italic">No historical entries available in logs.</td>
+                        </tr>
+                      ) : (
+                        pastPapers.map((paper) => (
+                          <tr key={paper.id} className="hover:bg-slate-50/50">
+                            <td className="px-5 py-3.5 font-black text-slate-900">{paper.paper_number}</td>
+                            <td className="px-5 py-3.5 font-medium text-slate-700">{paper.title}</td>
+                            <td className="px-5 py-3.5">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${paper.paper_type === 'Pure Maths' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>{paper.paper_type}</span>
+                            </td>
+                            <td className="px-5 py-3.5 text-right space-x-1.5">
+                              <button onClick={() => handleDownloadPaper(paper.id, paper.title)} className="px-2.5 py-1.5 bg-slate-100 text-slate-800 text-[11px] font-bold rounded-md cursor-pointer">📄 Questions</button>
+                              <button onClick={() => handleDownloadScheme(paper.id, paper.title)} className="px-2.5 py-1.5 bg-blue-50 text-blue-700 text-[11px] font-bold rounded-md cursor-pointer">🔑 Scheme</button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>

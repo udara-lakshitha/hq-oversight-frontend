@@ -217,7 +217,9 @@ export default function Dashboard({ student }) {
   const handleDownloadPaper = async (examId, title) => {
     try {
       showNotification(`Initializing download for ${title}...`, false);
-      const response = await api.get(`/api/exams/stream-paper/${examId}`, { responseType: 'blob', headers: getDeviceHeaders() });
+      const response = await api.get(`/api/exams/stream-paper/${examId}?file_type=paper`, { 
+        responseType: 'blob' 
+      });
       const fileUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const fileLink = document.createElement('a');
       fileLink.href = fileUrl;
@@ -232,7 +234,10 @@ export default function Dashboard({ student }) {
 
   const handleDownloadScheme = async (examId, title) => {
     try {
-      const response = await api.get(`/api/marks/stream-scheme/${examId}`, { responseType: 'blob' });
+      showNotification(`Extracting marking matrix for ${title}...`, false);
+      const response = await api.get(`/api/exams/stream-paper/${examId}?file_type=scheme`, { 
+        responseType: 'blob' 
+      });
       const fileUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const fileLink = document.createElement('a');
       fileLink.href = fileUrl;
@@ -241,7 +246,7 @@ export default function Dashboard({ student }) {
       fileLink.click();
       fileLink.remove();
     } catch (err) {
-      showNotification(`🔒 ${err.response?.data?.detail || "Access Denied."}`, true);
+      showNotification(`🔒 ${err.response?.data?.detail || "Marking scheme trace missing or access rejected."}`, true);
     }
   };
 
@@ -610,15 +615,13 @@ export default function Dashboard({ student }) {
             )}
 
             {activeTab === 'weekly' && (
-              <div className="space-y-6">
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xl">
                 <LiveExamWindow 
-                  activePaper={activePaper}
-                  countdownString={countdownString}
+                  activePaper={activePaper} 
+                  countdownString={countdownString} 
                   loadingExams={loadingExams}
-                  errorMsg={errorMsg}
-                  MOCK_LIVE_MODE={MOCK_LIVE_MODE}
-                  selectedFile={qFile}
-                  setSelectedFile={setQFile}
+                  qFile={qFile}
+                  setQFile={setQFile}
                   handleAnswerUploadSubmit={handleAnswerUploadSubmit}
                   handleDownloadPaper={handleDownloadPaper}
                 />
@@ -626,47 +629,32 @@ export default function Dashboard({ student }) {
             )}
 
             {activeTab === 'past-papers' && (
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-xl overflow-hidden">
-                <div className="p-4 border-b border-slate-100">
-                  <h3 className="text-lg font-black text-slate-900">Concluded Archive Library</h3>
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xl space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h3 className="text-md font-black text-slate-900">📚 Released Archive Matrix</h3>
+                  <span className="text-[10px] bg-slate-100 font-mono text-slate-500 px-2 py-1 rounded-md font-bold">COUNT: {pastPapers.length} PAPERS</span>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-100 font-black text-slate-400 uppercase">
-                        <th className="px-5 py-3">Module Code</th>
-                        <th className="px-5 py-3">Paper Title</th>
-                        <th className="px-5 py-3">Stream</th>
-                        <th className="px-5 py-3 text-right">Resource Downloads</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-bold text-slate-600">
-                      {status === STATUS.LOADING ? (
-                        <tr>
-                          <td colSpan="4" className="px-5 py-8 text-center text-slate-400 font-bold">Synchronizing repository...</td>
-                        </tr>
-                      ) : pastPapers.length === 0 ? (
-                        <tr>
-                          <td colSpan="4" className="px-5 py-8 text-center font-bold text-slate-400 italic">No historical entries available in logs.</td>
-                        </tr>
-                      ) : (
-                        pastPapers.map((paper) => (
-                          <tr key={paper.id} className="hover:bg-slate-50/50">
-                            <td className="px-5 py-3.5 font-black text-slate-900">{paper.paper_number}</td>
-                            <td className="px-5 py-3.5 font-medium text-slate-700">{paper.title}</td>
-                            <td className="px-5 py-3.5">
-                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${paper.paper_type === 'Pure Maths' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>{paper.paper_type}</span>
-                            </td>
-                            <td className="px-5 py-3.5 text-right space-x-1.5">
-                              <button onClick={() => handleDownloadPaper(paper.id, paper.title)} className="px-2.5 py-1.5 bg-slate-100 text-slate-800 text-[11px] font-bold rounded-md cursor-pointer">📄 Questions</button>
-                              <button onClick={() => handleDownloadScheme(paper.id, paper.title)} className="px-2.5 py-1.5 bg-blue-50 text-blue-700 text-[11px] font-bold rounded-md cursor-pointer">🔑 Scheme</button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                {pastPapers.length === 0 ? (
+                  <div className="text-center py-12 text-slate-400 text-xs italic border border-dashed border-slate-200 rounded-xl">Archival database maps empty.</div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {pastPapers.map((paper) => (
+                      <div key={paper.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:bg-slate-50/50 px-2 transition-colors rounded-xl">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-mono uppercase">{paper.paper_number}</span>
+                            <h4 className="text-xs font-black text-slate-800 tracking-tight">{paper.title}</h4>
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{paper.paper_type || 'Unclassified'}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => handleDownloadPaper(paper.id, paper.title)} className="bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors">📥 Questions</button>
+                          <button onClick={() => handleDownloadScheme(paper.id, paper.title)} className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors">🔑 Scheme</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

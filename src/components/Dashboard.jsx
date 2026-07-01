@@ -4,8 +4,6 @@ import AnalyticsChart from './AnalyticsChart';
 import PerformanceTable from './PerformanceTable';
 import LiveExamWindow from './LiveExamWindow';
 
-const MOCK_LIVE_MODE = false;
-
 const STATUS = {
   IDLE: 'IDLE',
   LOADING: 'LOADING',
@@ -33,7 +31,7 @@ const dashboardReducer = (state, action) => {
       return { ...state, activePaper: action.payload };
     default:
       return state;
-  }
+    }
 };
 
 const INITIAL_STATE = {
@@ -70,6 +68,7 @@ export default function Dashboard({ student }) {
   const [feedbackFile, setFeedbackFile] = useState(null);
 
   const [countdownString, setCountdownString] = useState('');
+  const [localSecondsLeft, setLocalSecondsLeft] = useState(0);
   const [message, setMessage] = useState('');
   const [isError, setIsError] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -109,26 +108,18 @@ export default function Dashboard({ student }) {
 
       if (pastResults.status === 'fulfilled' && pastResults.value?.data) {
         directPapers = pastResults.value.data;
-      } else {
-        console.error("Past papers archive endpoint failure:", pastResults.reason);
       }
 
       if (marksResults.status === 'fulfilled' && marksResults.value?.data) {
         directMarks = marksResults.value.data;
-      } else {
-        console.warn("Student marks history record empty or currently offline.");
       }
 
       dispatch({
         type: 'FETCH_SUCCESS',
-        payload: {
-          pastPapers: directPapers,
-          dbMarks: directMarks
-        }
+        payload: { pastPapers: directPapers, dbMarks: directMarks }
       });
     } catch (err) {
-      console.error("Critical Data Layer Fault:", err);
-      dispatch({ type: 'FETCH_FAILURE', payload: 'Could not resolve backend response arrays.' });
+      dispatch({ type: 'FETCH_FAILURE', payload: 'Could not resolve backend arrays.' });
     }
   }, [student?.id, isAdmin]);
 
@@ -175,7 +166,6 @@ export default function Dashboard({ student }) {
     formData.append("paper_number", paperNumber);
     formData.append("title", paperTitle);
     formData.append("paper_type", paperType);
-    
     if (mode === 'paper' && qFile) formData.append("question_file", qFile);
     if (mode === 'scheme' && mFile) formData.append("marking_scheme_file", mFile);
 
@@ -185,7 +175,6 @@ export default function Dashboard({ student }) {
       });
       showNotification("Assets successfully processed and committed!", false);
       setPaperNumber(''); setPaperTitle(''); setQFile(null); setMFile(null);
-      
       const pastRes = await api.get('/api/marks/past-papers');
       dispatch({ type: 'UPDATE_PAST_PAPERS', payload: pastRes.data || [] });
     } catch (err) {
@@ -196,7 +185,6 @@ export default function Dashboard({ student }) {
   const handleEvaluationSubmit = async (e) => {
     e.preventDefault();
     if (!feedbackFile) return showNotification("Please choose an evaluated feedback file.", true);
-
     const formData = new FormData();
     formData.append("student_id", selectedSubmission.student_id);
     formData.append("exam_id", selectedSubmission.exam_id);
@@ -217,9 +205,7 @@ export default function Dashboard({ student }) {
   const handleDownloadPaper = async (examId, title) => {
     try {
       showNotification(`Initializing download for ${title}...`, false);
-      const response = await api.get(`/api/exams/stream-paper/${examId}?file_type=paper`, { 
-        responseType: 'blob' 
-      });
+      const response = await api.get(`/api/exams/stream-paper/${examId}?file_type=paper`, { responseType: 'blob' });
       const fileUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const fileLink = document.createElement('a');
       fileLink.href = fileUrl;
@@ -235,9 +221,7 @@ export default function Dashboard({ student }) {
   const handleDownloadScheme = async (examId, title) => {
     try {
       showNotification(`Extracting marking matrix for ${title}...`, false);
-      const response = await api.get(`/api/exams/stream-paper/${examId}?file_type=scheme`, { 
-        responseType: 'blob' 
-      });
+      const response = await api.get(`/api/exams/stream-paper/${examId}?file_type=scheme`, { responseType: 'blob' });
       const fileUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const fileLink = document.createElement('a');
       fileLink.href = fileUrl;
@@ -246,14 +230,13 @@ export default function Dashboard({ student }) {
       fileLink.click();
       fileLink.remove();
     } catch (err) {
-      showNotification(`🔒 ${err.response?.data?.detail || "Marking scheme trace missing or access rejected."}`, true);
+      showNotification(`🔒 Scheme access trace missing or rejected.`, true);
     }
   };
 
   const handleAnswerUploadSubmit = async (e, examId) => {
     e.preventDefault();
     if (!qFile) return showNotification('PDF matrix file needed.', true);
-    
     const formPayload = new FormData();
     formPayload.append('file', qFile);
     try {
@@ -270,8 +253,7 @@ export default function Dashboard({ student }) {
   const nextExamPrediction = useMemo(() => {
     let maxNum = 0;
     const combinedList = [...pastPapers];
-    if (activePaper) combinedList.push(activePaper);
-
+    if (activePaper && activePaper.is_live && activePaper.exam) combinedList.push(activePaper.exam);
     combinedList.forEach(p => {
       if (p.paper_number) {
         const extractedDigits = p.paper_number.replace(/^\D+/g, '');
@@ -283,70 +265,53 @@ export default function Dashboard({ student }) {
   }, [pastPapers, activePaper]);
 
   useEffect(() => {
+    if (activePaper && typeof activePaper.seconds_remaining === 'number') {
+      setLocalSecondsLeft(activePaper.seconds_remaining);
+    }
+  }, [activePaper]);
+
+  useEffect(() => {
     if (isAdmin) return;
 
     const updateSystemClock = () => {
-      if (status !== STATUS.READY) {
+      if (status !== STATUS.READY || !activePaper) {
         setCountdownString("Synchronizing global calendar matrices...");
         return;
       }
 
-      if (MOCK_LIVE_MODE || activePaper) {
-        if (MOCK_LIVE_MODE && !activePaper) {
-          setCountdownString("You have only 02:14:30 remaining");
-          return;
-        }
-        
-        const now = new Date();
-        const sessionStart = new Date();
-        sessionStart.setHours(21, 0, 0, 0); 
-        const absoluteDeadline = new Date(sessionStart.getTime() + 3 * 60 * 60 * 1000); 
-        const distance = absoluteDeadline - now;
+      const isLiveSession = activePaper.is_live;
+      const currentPaperCode = activePaper.target_paper_code || nextExamPrediction.code;
 
-        if (distance <= 0 && !MOCK_LIVE_MODE) {
-          setCountdownString("⏱️ TIME EXPIRED: Live transmission gateway closed.");
-          setActiveTab('past-papers');
-        } else {
-          const displayDistance = distance <= 0 ? 8070000 : distance; 
-          const hours = String(Math.floor((displayDistance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))).padStart(2, '0');
-          const minutes = String(Math.floor((displayDistance % (1000 * 60)) / (1000 * 60))).padStart(2, '0');
-          const seconds = String(Math.floor((displayDistance % (1000 * 60)) / 1000)).padStart(2, '0');
+      setLocalSecondsLeft((prevSeconds) => {
+        const currentSeconds = prevSeconds - 1;
+        
+        if (currentSeconds <= 0) {
+          if (isLiveSession) {
+            setCountdownString("⏱️ TIME EXPIRED: Live transmission gateway closed.");
+          } else {
+            setCountdownString("⏳ Window boundary reached. Refreshing session view...");
+          }
+          return 0;
+        }
+
+        const days = String(Math.floor(currentSeconds / (3600 * 24))).padStart(2, '0');
+        const hours = String(Math.floor((currentSeconds % (3600 * 24)) / 3600)).padStart(2, '0');
+        const minutes = String(Math.floor((currentSeconds % 3600) / 60)).padStart(2, '0');
+        const seconds = String(currentSeconds % 60).padStart(2, '0');
+
+        if (isLiveSession) {
           setCountdownString(`You have only ${hours}:${minutes}:${seconds} remaining`);
-        }
-      } else {
-        const now = new Date();
-        const currentDay = now.getDay(); 
-        let targetDate = new Date();
-        
-        if (currentDay === 0 || currentDay === 1 || (currentDay === 2 && now.getHours() < 21)) {
-          targetDate.setDate(now.getDate() + (2 - currentDay + 7) % 7);
-        } else if (currentDay === 3 || currentDay === 4 || (currentDay === 5 && now.getHours() < 21)) {
-          targetDate.setDate(now.getDate() + (5 - currentDay + 7) % 7);
         } else {
-          targetDate.setDate(now.getDate() + (2 - currentDay + 7) % 7);
-        }
-        targetDate.setHours(21, 0, 0, 0);
-
-        const distance = targetDate - now;
-        const days = String(Math.floor(distance / (1000 * 60 * 60 * 24))).padStart(2, '0');
-        const hours = String(Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))).padStart(2, '0');
-        const minutes = String(Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60))).padStart(2, '0');
-        const seconds = String(Math.floor((distance % (1000 * 60)) / 1000)).padStart(2, '0');
-
-        let targetPaperCode = nextExamPrediction.code;
-        if (errorMsg && errorMsg.includes("HQ ")) {
-          const match = errorMsg.match(/HQ \d+/);
-          if (match) targetPaperCode = match[0];
+          setCountdownString(`${currentPaperCode} will be enabled after ${days}d : ${hours}h : ${minutes}m : ${seconds}s`);
         }
 
-        setCountdownString(`${targetPaperCode} will be enabled after ${days}d : ${hours}h : ${minutes}m : ${seconds}s`);
-      }
+        return currentSeconds;
+      });
     };
 
-    updateSystemClock();
     const clockInterval = setInterval(updateSystemClock, 1000);
     return () => clearInterval(clockInterval);
-  }, [activePaper, nextExamPrediction, errorMsg, isAdmin, status]);
+  }, [activePaper, nextExamPrediction, isAdmin, status]);
 
   const greetingMessage = useMemo(() => {
     const hours = new Date().getHours();
@@ -369,7 +334,6 @@ export default function Dashboard({ student }) {
     });
     
     let sortedData = processed.sort((a, b) => a.id.localeCompare(b.id));
-    
     sortedData = sortedData.map((item, index) => {
       let trendArrow = null; let trendText = '';
       for (let i = index - 1; i >= 0; i--) {
@@ -617,7 +581,7 @@ export default function Dashboard({ student }) {
             {activeTab === 'weekly' && (
               <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xl">
                 <LiveExamWindow 
-                  activePaper={activePaper} 
+                  activePaper={activePaper?.is_live ? activePaper.exam : null} 
                   countdownString={countdownString} 
                   loadingExams={loadingExams}
                   qFile={qFile}
@@ -644,12 +608,20 @@ export default function Dashboard({ student }) {
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-mono uppercase">{paper.paper_number}</span>
                             <h4 className="text-xs font-black text-slate-800 tracking-tight">{paper.title}</h4>
+                            {paper.marks !== null && (
+                              <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded ml-1">Score: {paper.marks}%</span>
+                            )}
                           </div>
                           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{paper.paper_type || 'Unclassified'}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           <button onClick={() => handleDownloadPaper(paper.id, paper.title)} className="bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors">📥 Questions</button>
-                          <button onClick={() => handleDownloadScheme(paper.id, paper.title)} className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors">🔑 Scheme</button>
+                          
+                          {paper.scheme_available ? (
+                            <button onClick={() => handleDownloadScheme(paper.id, paper.title)} className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors">🔑 Scheme</button>
+                          ) : (
+                            <button disabled className="bg-slate-100 text-slate-300 px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-not-allowed">🔒 Locked</button>
+                          )}
                         </div>
                       </div>
                     ))}

@@ -673,35 +673,68 @@ export default function Dashboard({ student }) {
               <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xl space-y-4">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                   <h3 className="text-md font-black text-slate-900">📚 Released Archive Matrix</h3>
-                  <span className="text-[10px] bg-slate-100 font-mono text-slate-500 px-2 py-1 rounded-md font-bold">COUNT: {pastPapers.length} PAPERS</span>
+                  <span className="text-[10px] bg-slate-100 font-mono text-slate-500 px-2 py-1 rounded-md font-bold">
+                    COUNT: {pastPapers.length} PAPERS
+                  </span>
                 </div>
+                
                 {pastPapers.length === 0 ? (
-                  <div className="text-center py-12 text-slate-400 text-xs italic border border-dashed border-slate-200 rounded-xl">Archival database maps empty.</div>
+                  <div className="text-center py-12 text-slate-400 text-xs italic border border-dashed border-slate-200 rounded-xl">
+                    Archival database maps empty.
+                  </div>
                 ) : (
                   <div className="divide-y divide-slate-100">
-                    {pastPapers.map((paper) => (
-                      <div key={paper.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:bg-slate-50/50 px-2 transition-colors rounded-xl">
-                        <div className="space-y-1">
+                    {pastPapers.map((paper) => {
+                      const isMarksAvailable = paper.marks !== null && paper.marks !== undefined;
+
+                      return (
+                        <div key={paper.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:bg-slate-50/50 px-2 transition-colors rounded-xl">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-mono uppercase">
+                                {paper.paper_number}
+                              </span>
+                              <h4 className="text-xs font-black text-slate-800 tracking-tight">{paper.title}</h4>
+                              
+                              {isMarksAvailable && (
+                                <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded ml-1">
+                                  Score: {paper.marks}%
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                              {paper.paper_type || 'Unclassified'}
+                            </p>
+                          </div>
+
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-mono uppercase">{paper.paper_number}</span>
-                            <h4 className="text-xs font-black text-slate-800 tracking-tight">{paper.title}</h4>
-                            {paper.marks !== null && (
-                              <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded ml-1">Score: {paper.marks}%</span>
+                            <button 
+                              onClick={() => handleDownloadPaper(paper.id, paper.title)} 
+                              className="bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors"
+                            >
+                              📥 Questions
+                            </button>
+                            
+                            {isMarksAvailable ? (
+                              <button 
+                                onClick={() => handleDownloadScheme(paper.id, paper.title)} 
+                                className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors"
+                              >
+                                🔑 Scheme
+                              </button>
+                            ) : (
+                              <button 
+                                disabled 
+                                className="bg-slate-100 text-slate-300 px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-not-allowed flex items-center gap-1"
+                                title="Marking scheme unlocks once your live submission has been scored."
+                              >
+                                🔒 Scheme Locked
+                              </button>
                             )}
                           </div>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{paper.paper_type || 'Unclassified'}</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => handleDownloadPaper(paper.id, paper.title)} className="bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors">📥 Questions</button>
-                          
-                          {paper.scheme_available ? (
-                            <button onClick={() => handleDownloadScheme(paper.id, paper.title)} className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors">🔑 Scheme</button>
-                          ) : (
-                            <button disabled className="bg-slate-100 text-slate-300 px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-not-allowed">🔒 Locked</button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

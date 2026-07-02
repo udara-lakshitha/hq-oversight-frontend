@@ -72,6 +72,8 @@ export default function Dashboard({ student }) {
   const [message, setMessage] = useState('');
   const [isError, setIsError] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const getDeviceHeaders = useCallback(() => {
     const token = localStorage.getItem('device_token') || '';
@@ -674,7 +676,7 @@ export default function Dashboard({ student }) {
                 <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                   <h3 className="text-md font-black text-slate-900">📚 Released Archive Matrix</h3>
                   <span className="text-[10px] bg-slate-100 font-mono text-slate-500 px-2 py-1 rounded-md font-bold">
-                    COUNT: {pastPapers.length} PAPERS
+                    TOTAL: {pastPapers.length} PAPERS
                   </span>
                 </div>
                 
@@ -682,61 +684,119 @@ export default function Dashboard({ student }) {
                   <div className="text-center py-12 text-slate-400 text-xs italic border border-dashed border-slate-200 rounded-xl">
                     Archival database maps empty.
                   </div>
-                ) : (
-                  <div className="divide-y divide-slate-100">
-                    {pastPapers.map((paper) => {
-                      const isMarksAvailable = paper.marks !== null && paper.marks !== undefined;
+                ) : (() => {
+                  const sortedPapers = [...pastPapers].sort((a, b) => b.id - a.id);
 
-                      return (
-                        <div key={paper.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:bg-slate-50/50 px-2 transition-colors rounded-xl">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-mono uppercase">
-                                {paper.paper_number}
-                              </span>
-                              <h4 className="text-xs font-black text-slate-800 tracking-tight">{paper.title}</h4>
-                              
-                              {isMarksAvailable && (
-                                <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded ml-1">
-                                  Score: {paper.marks}%
-                                </span>
-                              )}
+                  const indexOfLastItem = currentPage * itemsPerPage;
+                  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+                  const currentItems = sortedPapers.slice(indexOfFirstItem, indexOfLastItem);
+                  const totalPages = Math.ceil(sortedPapers.length / itemsPerPage);
+
+                  return (
+                    <>
+                      <div className="divide-y divide-slate-100">
+                        {currentItems.map((paper, index) => {
+                          const isMarksAvailable = paper.marks !== null && paper.marks !== undefined;
+                          
+                          const isLatestPaper = currentPage === 1 && index === 0;
+
+                          return (
+                            <div key={paper.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:bg-slate-50/50 px-2 transition-colors rounded-xl">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-mono uppercase">
+                                    {paper.paper_number}
+                                  </span>
+                                  <h4 className="text-xs font-black text-slate-800 tracking-tight">
+                                    {paper.title}
+                                    {isLatestPaper && (
+                                      <span className="ml-2 px-1.5 py-0.5 bg-amber-500 text-white text-[9px] font-black uppercase rounded tracking-wider animate-pulse">
+                                        Latest Done
+                                      </span>
+                                    )}
+                                  </h4>
+                                  
+                                  {isMarksAvailable && (
+                                    <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded ml-1">
+                                      Score: {paper.marks}%
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                  {paper.paper_type || 'Unclassified'}
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {isLatestPaper && (
+                                  isMarksAvailable ? (
+                                    <button 
+                                      onClick={() => handleDownloadScheme(paper.id, paper.title)} // Uses file_type="feedback" handling in your stream router
+                                      className="bg-purple-600 hover:bg-purple-700 text-white font-black px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors"
+                                    >
+                                      📥 Feedback Sheet
+                                    </button>
+                                  ) : (
+                                    <span className="text-slate-400 text-[10px] italic bg-slate-50 border border-slate-100 px-2 py-1.5 rounded-lg font-medium">
+                                      Feedback Pending
+                                    </span>
+                                  )
+                                )}
+
+                                <button 
+                                  onClick={() => handleDownloadPaper(paper.id, paper.title)} 
+                                  className="bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors"
+                                >
+                                  📄 Questions
+                                </button>
+                                
+                                {isMarksAvailable ? (
+                                  <button 
+                                    onClick={() => handleDownloadScheme(paper.id, paper.title)} 
+                                    className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors"
+                                  >
+                                    🔑 Scheme
+                                  </button>
+                                ) : (
+                                  <button 
+                                    disabled 
+                                    className="bg-slate-100 text-slate-300 px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-not-allowed"
+                                  >
+                                    🔒 Locked
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                              {paper.paper_type || 'Unclassified'}
-                            </p>
-                          </div>
+                          );
+                        })}
+                      </div>
 
-                          <div className="flex items-center gap-2">
-                            <button 
-                              onClick={() => handleDownloadPaper(paper.id, paper.title)} 
-                              className="bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors"
+                      {totalPages > 1 && (
+                        <div className="flex justify-between items-center pt-4 border-t border-slate-100 text-xs">
+                          <span className="text-slate-400 font-medium">
+                            Showing Page <strong className="text-slate-700">{currentPage}</strong> of <strong className="text-slate-700">{totalPages}</strong>
+                          </span>
+                          <div className="flex gap-1">
+                            <button
+                              disabled={currentPage === 1}
+                              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                              className="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-md font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors cursor-pointer"
                             >
-                              📥 Questions
+                              ◀ Prev
                             </button>
-                            
-                            {isMarksAvailable ? (
-                              <button 
-                                onClick={() => handleDownloadScheme(paper.id, paper.title)} 
-                                className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors"
-                              >
-                                🔑 Scheme
-                              </button>
-                            ) : (
-                              <button 
-                                disabled 
-                                className="bg-slate-100 text-slate-300 px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-not-allowed flex items-center gap-1"
-                                title="Marking scheme unlocks once your live submission has been scored."
-                              >
-                                🔒 Scheme Locked
-                              </button>
-                            )}
+                            <button
+                              disabled={currentPage === totalPages}
+                              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                              className="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-md font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors cursor-pointer"
+                            >
+                              Next ▶
+                            </button>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>

@@ -74,6 +74,8 @@ export default function Dashboard({ student }) {
   const [showToast, setShowToast] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const qFileInputRef = React.useRef(null);
+  const mFileInputRef = React.useRef(null);
 
   const getDeviceHeaders = useCallback(() => {
     const token = localStorage.getItem('device_token') || '';
@@ -176,7 +178,15 @@ export default function Dashboard({ student }) {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       showNotification("Assets successfully processed and committed!", false);
-      setPaperNumber(''); setPaperTitle(''); setQFile(null); setMFile(null);
+      
+      setPaperNumber(''); 
+      setPaperTitle(''); 
+      setQFile(null); 
+      setMFile(null);
+
+      if (qFileInputRef.current) qFileInputRef.current.value = "";
+      if (mFileInputRef.current) mFileInputRef.current.value = "";
+
       const pastRes = await api.get('/api/marks/past-papers');
       dispatch({ type: 'UPDATE_PAST_PAPERS', payload: pastRes.data || [] });
     } catch (err) {
@@ -461,7 +471,7 @@ export default function Dashboard({ student }) {
                   <div className="border border-dashed border-slate-200 rounded-xl p-6 bg-slate-50 text-center">
                     <label className="block text-xs font-bold text-slate-600 cursor-pointer">
                       📁 Select Question Paper PDF
-                      <input type="file" accept=".pdf" onChange={e => setQFile(e.target.files[0])} required className="hidden" />
+                      <input type="file" accept=".pdf" ref={qFileInputRef} onChange={e => setQFile(e.target.files[0])} required className="hidden" />
                       <span className="block text-[11px] text-blue-600 font-mono mt-1">{qFile ? `✔️ Ready: ${qFile.name}` : 'Drop target question sheet'}</span>
                     </label>
                   </div>
@@ -487,7 +497,7 @@ export default function Dashboard({ student }) {
                   <div className="border border-dashed border-slate-200 rounded-xl p-6 bg-slate-50 text-center">
                     <label className="block text-xs font-bold text-slate-600 cursor-pointer">
                       🔑 Select Marking Scheme PDF
-                      <input type="file" accept=".pdf" onChange={e => setMFile(e.target.files[0])} required className="hidden" />
+                      <input type="file" accept=".pdf" ref={qFileInputRef} onChange={e => setMFile(e.target.files[0])} required className="hidden" />
                       <span className="block text-[11px] text-blue-600 font-mono mt-1">{mFile ? `✔️ Ready: ${mFile.name}` : 'Drop target validation layout'}</span>
                     </label>
                   </div>

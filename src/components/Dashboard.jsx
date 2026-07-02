@@ -389,9 +389,12 @@ export default function Dashboard({ student }) {
   const unifiedHistoryData = useMemo(() => {
     const processed = dbMarks.map((item) => {
       const paperDigits = item.paper_number?.replace(/^\D+/g, '') || '1';
-      const isPure = parseInt(paperDigits, 10) % 2 !== 0;
+      const numericId = parseInt(paperDigits, 10);
+      const isPure = numericId % 2 !== 0;
+      
       return {
         id: item.paper_number,
+        numericId: numericId,
         name: `${item.paper_number} Module`,
         type: isPure ? 'Pure Maths' : 'Applied Maths',
         marks: item.marks,
@@ -399,7 +402,8 @@ export default function Dashboard({ student }) {
       };
     });
     
-    let sortedData = processed.sort((a, b) => a.id.localeCompare(b.id));
+    let sortedData = processed.sort((a, b) => a.numericId - b.numericId);
+    
     sortedData = sortedData.map((item, index) => {
       let trendArrow = null; let trendText = '';
       for (let i = index - 1; i >= 0; i--) {

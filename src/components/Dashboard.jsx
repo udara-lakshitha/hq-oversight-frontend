@@ -290,6 +290,32 @@ export default function Dashboard({ student }) {
     }
   };
 
+  const handleUserLogoutClean = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        }
+      });
+    } catch (error) {
+      console.error("Backend session teardown failed:", error);
+    } finally {
+      // Clear client-side memory spaces completely
+      localStorage.removeItem("token");
+      localStorage.removeItem("user_role");
+      
+      if (dispatch) {
+        dispatch({ type: 'CLEAR_AUTH_STATE' });
+      }
+      
+      window.location.href = "/login";
+    }
+  };
+
   const nextExamPrediction = useMemo(() => {
     let maxNum = 0;
     const combinedList = [...pastPapers];
@@ -416,13 +442,27 @@ export default function Dashboard({ student }) {
 
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-5xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          
           <div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">
               {isAdmin ? `Control Desk Matrix 🛠️` : `${greetingMessage}, ${student?.name || 'Student'}! 🎓`}
             </h1>
-            <p className="text-[11px] font-bold text-blue-600 uppercase tracking-widest mt-1">
-              {isAdmin ? "ADMIN CONTROL CENTER" : "HQ-OVERSIGHT CONTROL MODULE"}
-            </p>
+            <div className="flex items-center gap-3 mt-1.5">
+              <p className="text-[11px] font-bold text-blue-600 uppercase tracking-widest">
+                {isAdmin ? "ADMIN CONTROL CENTER" : "HQ-OVERSIGHT CONTROL MODULE"}
+              </p>
+              
+              <span className="text-slate-200 text-xs font-light">|</span>
+              
+              <button
+                onClick={handleUserLogoutClean}
+                className="text-[10px] font-black text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 px-2 py-0.5 rounded-md cursor-pointer transition-all duration-150 flex items-center gap-1 active:scale-95"
+                title="Securely terminate session"
+              >
+                <span>🚪</span>
+                <span className="tracking-tight uppercase">Sign Out</span>
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl border border-slate-200 gap-0.5">
@@ -441,6 +481,7 @@ export default function Dashboard({ student }) {
               </>
             )}
           </div>
+
         </div>
       </header>
 

@@ -1,8 +1,13 @@
-import React, { useState, useMemo, useEffect, useReducer, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useReducer, useCallback, useRef } from 'react';
 import api from '../config/api';
 import AnalyticsChart from './AnalyticsChart';
 import PerformanceTable from './PerformanceTable';
 import LiveExamWindow from './LiveExamWindow';
+
+import AdminUploadPaper from './AdminUploadPaper';
+import AdminUploadScheme from './AdminUploadScheme';
+import AdminSubmissionsQueue from './AdminSubmissionsQueue';
+import AdminGradebookRegistry from './AdminGradebookRegistry';
 
 const STATUS = {
   IDLE: 'IDLE',
@@ -31,7 +36,7 @@ const dashboardReducer = (state, action) => {
       return { ...state, activePaper: action.payload };
     default:
       return state;
-    }
+  }
 };
 
 const INITIAL_STATE = {
@@ -74,8 +79,9 @@ export default function Dashboard({ student }) {
   const [showToast, setShowToast] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-  const qFileInputRef = React.useRef(null);
-  const mFileInputRef = React.useRef(null);
+  
+  const qFileInputRef = useRef(null);
+  const mFileInputRef = useRef(null);
 
   const getDeviceHeaders = useCallback(() => {
     const token = localStorage.getItem('device_token') || '';
@@ -293,7 +299,6 @@ export default function Dashboard({ student }) {
   const handleUserLogoutClean = async () => {
     try {
       const token = localStorage.getItem("token");
-      
       await fetch("/api/auth/logout", {
         method: "POST",
         headers: {
@@ -304,14 +309,8 @@ export default function Dashboard({ student }) {
     } catch (error) {
       console.error("Backend session teardown failed:", error);
     } finally {
-      // Clear client-side memory spaces completely
       localStorage.removeItem("token");
       localStorage.removeItem("user_role");
-      
-      if (dispatch) {
-        dispatch({ type: 'CLEAR_AUTH_STATE' });
-      }
-      
       window.location.href = "/login";
     }
   };
@@ -360,7 +359,6 @@ export default function Dashboard({ student }) {
           return 0;
         }
 
-        const days = String(Math.floor(currentSeconds / (3600 * 24))).padStart(2, '0');
         const hours = String(Math.floor((currentSeconds % (3600 * 24)) / 3600)).padStart(2, '0');
         const minutes = String(Math.floor((currentSeconds % 3600) / 60)).padStart(2, '0');
         const seconds = String(currentSeconds % 60).padStart(2, '0');
@@ -368,6 +366,7 @@ export default function Dashboard({ student }) {
         if (isLiveSession) {
           setCountdownString(`You have only ${hours}:${minutes}:${seconds} remaining`);
         } else {
+          const days = String(Math.floor(currentSeconds / (3600 * 24))).padStart(2, '0');
           setCountdownString(`${currentPaperCode} will be enabled after ${days}d : ${hours}h : ${minutes}m : ${seconds}s`);
         }
 
@@ -424,15 +423,18 @@ export default function Dashboard({ student }) {
     return sortedData;
   }, [dbMarks, subjectFilter, rangeFilter]);
 
-  const filteredGradebook = gradebook.filter(record => {
-    const matchStudent = record.student_name.toLowerCase().includes(filterStudent.toLowerCase());
-    const matchPaper = record.paper_number.toLowerCase().includes(filterPaper.toLowerCase()) || 
-                       record.paper_title.toLowerCase().includes(filterPaper.toLowerCase());
-    return matchStudent && matchPaper;
-  });
+  const filteredGradebook = useMemo(() => {
+    return gradebook.filter(record => {
+      const matchStudent = record.student_name.toLowerCase().includes(filterStudent.toLowerCase());
+      const matchPaper = record.paper_number.toLowerCase().includes(filterPaper.toLowerCase()) || 
+                         record.paper_title.toLowerCase().includes(filterPaper.toLowerCase());
+      return matchStudent && matchPaper;
+    });
+  }, [gradebook, filterStudent, filterPaper]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 w-full font-sans antialiased relative overflow-hidden">
+      
       <div className={`fixed top-6 right-6 z-50 transform transition-all duration-300 max-w-sm w-full ${showToast ? 'translate-x-0 opacity-100' : 'translate-x-12 opacity-0 pointer-events-none'}`}>
         <div className={`p-4 rounded-lg shadow-2xl border flex items-start gap-3 ${isError ? 'bg-red-50 border-red-200 text-red-950' : 'bg-[#EBF7EE] border-[#1BA94C] text-[#194D26]'}`}>
           <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-black text-white ${isError ? 'bg-red-600' : 'bg-[#1BA94C]'}`}>{isError ? '!' : '✓'}</div>
@@ -446,7 +448,6 @@ export default function Dashboard({ student }) {
 
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-5xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          
           <div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">
               {isAdmin ? `Control Desk Matrix 🛠️` : `${greetingMessage}, ${student?.name || 'Student'}! 🎓`}
@@ -455,13 +456,10 @@ export default function Dashboard({ student }) {
               <p className="text-[11px] font-bold text-blue-600 uppercase tracking-widest">
                 {isAdmin ? "ADMIN CONTROL CENTER" : "HQ-OVERSIGHT CONTROL MODULE"}
               </p>
-              
               <span className="text-slate-200 text-xs font-light">|</span>
-              
               <button
                 onClick={handleUserLogoutClean}
                 className="text-[10px] font-black text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 px-2 py-0.5 rounded-md cursor-pointer transition-all duration-150 flex items-center gap-1 active:scale-95"
-                title="Securely terminate session"
               >
                 <span>🚪</span>
                 <span className="tracking-tight uppercase">Sign Out</span>
@@ -485,7 +483,6 @@ export default function Dashboard({ student }) {
               </>
             )}
           </div>
-
         </div>
       </header>
 
@@ -493,208 +490,41 @@ export default function Dashboard({ student }) {
         {isAdmin ? (
           <div className="space-y-6">
             {activeTab === 'upload_papers' && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xl max-w-2xl mx-auto">
-                <h3 className="text-lg font-black text-slate-900 mb-1">📄 Deploy Target Question Repository</h3>
-                <form onSubmit={(e) => handleAdminUploadSubmit(e, 'paper')} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Paper Code</label>
-                      <input type="text" placeholder="e.g. HQ 1" value={paperNumber} onChange={e => setPaperNumber(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none" />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Core Paper Title</label>
-                      <input type="text" placeholder="e.g. Pure Vectors Complex Equation" value={paperTitle} onChange={e => setPaperTitle(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Classification Category</label>
-                    <select value={paperType} onChange={e => setPaperType(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none">
-                      <option>Pure Maths</option>
-                      <option>Applied Maths</option>
-                    </select>
-                  </div>
-                  <div className="border border-dashed border-slate-200 rounded-xl p-6 bg-slate-50 text-center">
-                    <label className="block text-xs font-bold text-slate-600 cursor-pointer">
-                      📁 Select Question Paper PDF
-                      <input type="file" accept=".pdf" ref={qFileInputRef} onChange={e => setQFile(e.target.files[0])} required className="hidden" />
-                      <span className="block text-[11px] text-blue-600 font-mono mt-1">{qFile ? `✔️ Ready: ${qFile.name}` : 'Drop target question sheet'}</span>
-                    </label>
-                  </div>
-                  <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 rounded-xl uppercase tracking-wider transition-colors">Commit Question Paper File</button>
-                </form>
-              </div>
+              <AdminUploadPaper 
+                paperNumber={paperNumber} setPaperNumber={setPaperNumber}
+                paperTitle={paperTitle} setPaperTitle={setPaperTitle}
+                paperType={paperType} setPaperType={setPaperType}
+                qFile={qFile} setQFile={setQFile} qFileInputRef={qFileInputRef}
+                onSubmit={handleAdminUploadSubmit}
+              />
             )}
 
             {activeTab === 'upload_schemes' && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xl max-w-2xl mx-auto">
-                <h3 className="text-lg font-black text-slate-900 mb-1">🔑 Deploy Secure Reference Marking Scheme</h3>
-                <form onSubmit={(e) => handleAdminUploadSubmit(e, 'scheme')} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Target Code</label>
-                      <input type="text" placeholder="e.g. HQ 1" value={paperNumber} onChange={e => setPaperNumber(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none" />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-[10px] font-black uppercase text-slate-500 mb-1">Core Paper Title</label>
-                      <input type="text" placeholder="e.g. Pure Vectors Complex Equation Layout" value={paperTitle} onChange={e => setPaperTitle(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none" />
-                    </div>
-                  </div>
-                  <div className="border border-dashed border-slate-200 rounded-xl p-6 bg-slate-50 text-center">
-                    <label className="block text-xs font-bold text-slate-600 cursor-pointer">
-                      🔑 Select Marking Scheme PDF
-                      <input type="file" accept=".pdf" ref={qFileInputRef} onChange={e => setMFile(e.target.files[0])} required className="hidden" />
-                      <span className="block text-[11px] text-blue-600 font-mono mt-1">{mFile ? `✔️ Ready: ${mFile.name}` : 'Drop target validation layout'}</span>
-                    </label>
-                  </div>
-                  <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 rounded-xl uppercase tracking-wider transition-colors">Commit Marking Scheme File</button>
-                </form>
-              </div>
+              <AdminUploadScheme 
+                paperNumber={paperNumber} setPaperNumber={setPaperNumber}
+                paperTitle={paperTitle} setPaperTitle={setPaperTitle}
+                mFile={mFile} setMFile={setMFile} mFileInputRef={mFileInputRef}
+                onSubmit={handleAdminUploadSubmit}
+              />
             )}
 
             {activeTab === 'submissions' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
-                {/* LEFT PANEL: PENDING LIST DIRECTORY */}
-                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-xl">
-                  <h3 className="text-md font-black text-slate-900 mb-1">📥 Pending Workspace Directory Queue</h3>
-                  {pendingSubmissions.length === 0 ? (
-                    <div className="text-center py-12 text-slate-400 text-xs italic border border-slate-200 border-dashed rounded-xl">
-                      No active un-evaluated answer traces found.
-                    </div>
-                  ) : (
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase">
-                          <th className="py-2">Paper Code</th>
-                          <th className="py-2">Student Entity Profile</th>
-                          <th className="py-2 text-right">Evaluation Desk</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-slate-700">
-                        {pendingSubmissions.map((sub) => (
-                          <tr key={sub.submission_id}>
-                            <td className="py-3 font-black text-blue-600">{sub.paper_number}</td>
-                            <td className="py-3 font-medium">{sub.student_name}</td>
-                            <td className="py-3 text-right">
-                              <button 
-                                onClick={() => setSelectedSubmission(sub)} 
-                                className="bg-blue-600 text-white px-3 py-1 font-bold rounded-md text-[11px] cursor-pointer hover:bg-blue-700 transition-colors"
-                              >
-                                Grade Script
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-                
-                <div className="lg:col-span-1">
-                  {selectedSubmission ? (
-                    <div className="bg-white rounded-2xl border-2 border-blue-600 p-6 shadow-xl space-y-4">
-                      <div>
-                        <h4 className="text-sm font-black text-slate-900">Grading Node: {selectedSubmission.student_name}</h4>
-                        <p className="text-[10px] text-slate-400 font-mono mt-0.5 break-all">{selectedSubmission.filename}</p>
-                      </div>
-
-                      <button 
-                        type="button"
-                        onClick={() => handleDownloadStudentScript(selectedSubmission.filename)}
-                        className="w-full text-center bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold py-2 rounded-lg transition-colors cursor-pointer block"
-                      >
-                        📥 Download Student Answer Script
-                      </button>
-
-                      <form onSubmit={handleEvaluationSubmit} className="space-y-3 text-xs">
-                        <div>
-                          <label className="block font-bold text-slate-500 mb-1">Score Mark Allocation (0-100)</label>
-                          <input 
-                            type="number" 
-                            step="0.1" 
-                            value={assignedMark} 
-                            onChange={e => setAssignedMark(e.target.value)} 
-                            required 
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none font-bold text-slate-800" 
-                          />
-                        </div>
-
-                        {/* 📁 Drag & Drop Layout matching Upload Papers tab */}
-                        <div className="border border-dashed border-slate-200 rounded-lg p-4 bg-slate-50 text-center">
-                          <label className="block font-bold text-slate-600 cursor-pointer">
-                            📎 Upload Evaluated Feedback PDF
-                            <input 
-                              type="file" 
-                              accept=".pdf" 
-                              onChange={e => setFeedbackFile(e.target.files[0])} 
-                              required 
-                              className="hidden" 
-                            />
-                            <span className="block text-[10px] text-blue-600 font-mono mt-1.5">
-                              {feedbackFile ? `✔️ Ready: ${feedbackFile.name}` : 'Drop verified feedback markup sheet'}
-                            </span>
-                          </label>
-                        </div>
-
-                        <div className="flex gap-1.5 pt-1">
-                          <button type="submit" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 font-bold rounded-lg cursor-pointer transition-colors">
-                            Save Evaluation
-                          </button>
-                          <button 
-                            type="button" 
-                            onClick={() => { setSelectedSubmission(null); setFeedbackFile(null); setAssignedMark(''); }} 
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 rounded-lg cursor-pointer transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-                  ) : (
-                    <div className="text-center py-12 text-slate-400 text-xs border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-                      Select an item to evaluate.
-                    </div>
-                  )}
-                </div>
-              </div>
+              <AdminSubmissionsQueue 
+                pendingSubmissions={pendingSubmissions}
+                selectedSubmission={selectedSubmission} setSelectedSubmission={setSelectedSubmission}
+                assignedMark={assignedMark} setAssignedMark={setAssignedMark}
+                feedbackFile={feedbackFile} setFeedbackFile={setFeedbackFile}
+                onDownloadStudentScript={handleDownloadStudentScript}
+                onEvaluationSubmit={handleEvaluationSubmit}
+              />
             )}
 
             {activeTab === 'view_marks' && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xl space-y-4">
-                <h3 className="text-md font-black text-slate-900">📊 Global Evaluation Registry Grid Ledger</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <input type="text" placeholder="🔎 Search by student name..." value={filterStudent} onChange={e => setFilterStudent(e.target.value)} className="bg-white border border-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none" />
-                  <input type="text" placeholder="📄 Search by paper configuration code..." value={filterPaper} onChange={e => setFilterPaper(e.target.value)} className="bg-white border border-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none" />
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase">
-                        <th className="py-2 px-2">Student Name</th>
-                        <th className="py-2 px-2">Paper Number</th>
-                        <th className="py-2 px-2">Operational Title</th>
-                        <th className="py-2 px-2 text-center">Score Grade</th>
-                        <th className="py-2 px-2 text-right">Grading Timestamp</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                      {filteredGradebook.length === 0 ? (
-                        <tr><td colSpan="5" className="text-center py-6 text-slate-400 italic">No evaluated entries found matching parameters.</td></tr>
-                      ) : (
-                        filteredGradebook.map((record, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/60">
-                            <td className="py-2.5 px-2 font-bold text-slate-900">{record.student_name}</td>
-                            <td className="py-2.5 px-2 text-blue-600 font-bold">{record.paper_number}</td>
-                            <td className="py-2.5 px-2 text-slate-600">{record.paper_title}</td>
-                            <td className="py-2.5 px-2 text-center"><span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-bold">{record.marks}%</span></td>
-                            <td className="py-2.5 px-2 text-right font-mono text-slate-400">{record.graded_at}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <AdminGradebookRegistry 
+                filterStudent={filterStudent} setFilterStudent={setFilterStudent}
+                filterPaper={filterPaper} setFilterPaper={setFilterPaper}
+                filteredGradebook={filteredGradebook}
+              />
             )}
           </div>
         ) : (
@@ -741,7 +571,6 @@ export default function Dashboard({ student }) {
                   </div>
                 ) : (() => {
                   const sortedPapers = [...pastPapers].sort((a, b) => b.id - a.id);
-
                   const indexOfLastItem = currentPage * itemsPerPage;
                   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
                   const currentItems = sortedPapers.slice(indexOfFirstItem, indexOfLastItem);
@@ -752,7 +581,6 @@ export default function Dashboard({ student }) {
                       <div className="divide-y divide-slate-100">
                         {currentItems.map((paper, index) => {
                           const isMarksAvailable = paper.marks !== null && paper.marks !== undefined;
-                          
                           const isLatestPaper = currentPage === 1 && index === 0;
 
                           return (
@@ -770,7 +598,6 @@ export default function Dashboard({ student }) {
                                       </span>
                                     )}
                                   </h4>
-                                  
                                   {isMarksAvailable && (
                                     <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded ml-1">
                                       Score: {paper.marks}%
@@ -786,7 +613,7 @@ export default function Dashboard({ student }) {
                                 {isLatestPaper && (
                                   isMarksAvailable ? (
                                     <button 
-                                      onClick={() => handleDownloadScheme(paper.id, paper.title)} // Uses file_type="feedback" handling in your stream router
+                                      onClick={() => handleDownloadScheme(paper.id, paper.title)} 
                                       className="bg-purple-600 hover:bg-purple-700 text-white font-black px-3 py-1.5 rounded-lg font-bold text-[11px] cursor-pointer transition-colors"
                                     >
                                       📥 Feedback Sheet

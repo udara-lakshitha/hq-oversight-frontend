@@ -5,7 +5,7 @@ export default function LandingPage({ setView }) {
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-4">
       <div className="max-w-3xl text-center space-y-6">
         <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 px-4 py-1.5 rounded-full text-blue-700 text-sm font-semibold tracking-wide shadow-sm">
-          🚀 Next-Gen Evaluation Engine
+          Next-Gen Evaluation Engine
         </div>
         
         <h1 className="text-4xl sm:text-6xl font-extrabold text-slate-900 tracking-tight leading-none">

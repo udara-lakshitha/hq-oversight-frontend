@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import api from '../config/api'; // Migrated fetch engine to unified axios config client
+import api from '../config/api';
 
 export default function RegisterForm({ setView }) {
   const [name, setName] = useState('');
@@ -44,18 +44,15 @@ export default function RegisterForm({ setView }) {
     };
 
     try {
-      // Swapped verbose fetch setup out for clean api syntax
       const response = await api.post('/students/', payload);
-
       setIsError(false);
-      setMessage(`Success! Profile built. Assigned ID: STU-${response.data.id.toString().padStart(4, '0')}`);
+      setMessage(`Registration successful. Account ID: STU-${response.data.id.toString().padStart(4, '0')}`);
       setShowToast(true);
       setName(''); setEmail(''); setPhoneNumber(''); setPassword('');
       setCountdown(3);
     } catch (error) {
       setIsError(true);
-      // Clean axios-based server details or generic fallback message processing
-      setMessage(error.response?.data?.detail || 'Registration failed or server connection timed out.');
+      setMessage(error.response?.data?.detail || 'Registration failed. Please check your connection and try again.');
       setShowToast(true);
     }
   };
@@ -79,12 +76,12 @@ export default function RegisterForm({ setView }) {
 
           <div className="flex-1 space-y-0.5">
             <h4 className={`text-xs font-black tracking-wider uppercase ${isError ? 'text-red-800' : 'text-[#1AA148]'}`}>
-              {isError ? 'System Exception Error' : 'Success'}
+              {isError ? 'Error' : 'Success'}
             </h4>
             <p className="text-xs font-bold leading-relaxed opacity-95">{message}</p>
             {!isError && countdown !== null && (
-              <p className="text-[10px] font-black text-[#2E7D42] italic pt-0.5">
-                Routing to core console authentication in {countdown}s...
+              <p className="text-[10px] font-black text-[#2E7D42] pt-0.5">
+                Redirecting to login portal in {countdown}s...
               </p>
             )}
           </div>
@@ -101,16 +98,16 @@ export default function RegisterForm({ setView }) {
             onClick={() => setView('landing')} 
             className="text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors flex items-center gap-1 cursor-pointer"
           >
-            ← Back to Main Menu
+            ← Back to Home
           </button>
           <h2 className="text-2xl font-black text-slate-900 mt-3">Student Registration</h2>
-          <p className="text-sm font-medium text-slate-500">Set up your unified secure account layout profile</p>
+          <p className="text-sm font-medium text-slate-500">Create your secure student account profile</p>
         </div>
 
         <form onSubmit={handleRegister} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Full Name</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="Udara Lakshitha" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-800" disabled={countdown !== null} />
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="Enter your full name" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-800" disabled={countdown !== null} />
           </div>
 
           <div>
@@ -119,7 +116,7 @@ export default function RegisterForm({ setView }) {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Mobile number</label>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Mobile Number</label>
             <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} required placeholder="0771234567" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all font-medium text-slate-800" disabled={countdown !== null} />
           </div>
 
@@ -137,7 +134,7 @@ export default function RegisterForm({ setView }) {
                 : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
             }`}
           >
-            {countdown !== null ? 'Initializing Redirect...' : 'Verify & Create Profile'}
+            {countdown !== null ? 'Processing Redirect...' : 'Register Account'}
           </button>
         </form>
       </div>

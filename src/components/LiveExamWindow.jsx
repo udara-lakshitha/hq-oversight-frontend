@@ -31,7 +31,7 @@ export default function LiveExamWindow({
       if (droppedFile.name.toLowerCase().endsWith('.pdf') || droppedFile.type === 'application/pdf') {
         setQFile(droppedFile);
       } else {
-        alert("❌ Invalid File: Please drop a valid PDF script document.");
+        alert("Invalid File Format: Please upload a valid PDF script document.");
       }
     }
   };
@@ -42,9 +42,9 @@ export default function LiveExamWindow({
       <div className="border-b border-slate-100 pb-3 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <div>
           <span className={`border text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full tracking-wider ${(activePaper || MOCK_LIVE_MODE) ? 'bg-red-50 text-red-600 border-red-200 animate-pulse' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-            {(activePaper || MOCK_LIVE_MODE) ? '🔴 Active Exam Session' : '🔒 Portal Locked'}
+            {(activePaper || MOCK_LIVE_MODE) ? 'Active Examination' : 'Portal Inactive'}
           </span>
-          <h3 className="text-lg font-black text-slate-900 mt-2">Synchronized Examination Gate</h3>
+          <h3 className="text-lg font-black text-slate-900 mt-2">Examination Module</h3>
         </div>
         <div className="px-4 py-2 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl text-xs font-black font-mono shadow-xs animate-pulse">
           {countdownString}
@@ -52,10 +52,10 @@ export default function LiveExamWindow({
       </div>
 
       {loadingExams ? (
-        <div className="text-center font-bold text-slate-500 py-12">Synchronizing state tracking routes...</div>
+        <div className="text-center font-bold text-slate-500 py-12">Synchronizing data paths...</div>
       ) : errorMsg && !MOCK_LIVE_MODE ? (
         <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-xl">
-          <p className="text-sm font-black text-slate-700">🔒 Gate Status: {errorMsg}</p>
+          <p className="text-sm font-black text-slate-700">Status: {errorMsg}</p>
         </div>
       ) : (activePaper || MOCK_LIVE_MODE) ? (
         <div className="flex flex-col gap-4">
@@ -66,18 +66,17 @@ export default function LiveExamWindow({
                 {activePaper?.paper_type || 'Standard Module'}
               </span>
               <h4 className="text-md font-black text-slate-900">
-                {activePaper?.paper_number || 'HQ Current'}: {activePaper?.title || 'Active Dynamic Examination Sheet'}
+                {activePaper?.paper_number || 'Current'}: {activePaper?.title || 'Active Examination Sheet'}
               </h4>
             </div>
             <button 
               onClick={() => handleDownloadPaper(activePaper?.id || 1, activePaper?.title || 'Paper')} 
               className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-black text-xs px-5 py-2.5 rounded-lg cursor-pointer transition-colors shadow-xs flex items-center justify-center gap-1.5 shrink-0"
             >
-              📥 Download Question Sheet
+              Download Question Paper
             </button>
           </div>
 
-          {/* BOTTOM PANEL: EXPANDED FULL-WIDTH SUBMISSION DROP ZONE */}
           <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
             <form onSubmit={(e) => handleAnswerUploadSubmit(e, activePaper?.id || 1)} className="space-y-4">
               
@@ -93,19 +92,18 @@ export default function LiveExamWindow({
                   type="file" 
                   onChange={e => {
                     if (e.target.files && e.target.files.length > 0) {
-                      setQFile(e.target.files[0]); // 🎯 Updated reference
+                      setQFile(e.target.files[0]);
                     }
                   }} 
                   className="hidden" 
                 />
                 
                 <div className="space-y-2 pointer-events-none">
-                  <div className="text-2xl">📁</div>
                   <p className="text-xs font-black text-slate-700">
-                    Drag & Drop your completed answer script here
+                    Drag and drop your completed answer script here
                   </p>
                   <p className="text-[11px] font-bold text-slate-400">
-                    or click to browse your storage directory
+                    or click to browse local files
                   </p>
                 </div>
 
@@ -118,7 +116,7 @@ export default function LiveExamWindow({
                     }}
                     className="mt-4 z-20 flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-950 px-3 py-1.5 rounded-lg text-xs font-mono font-bold shadow-xs hover:bg-emerald-100/70 transition-colors"
                   >
-                    <span>📄 {qFile.name}</span>
+                    <span>{qFile.name}</span>
                     <span className="text-emerald-600 font-sans font-black ml-1 text-xs">✕</span>
                   </div>
                 )}
@@ -133,7 +131,7 @@ export default function LiveExamWindow({
                     : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                 }`}
               >
-                🚀 Transmit Answer Sheet For Evaluation
+                Submit Answer Script for Evaluation
               </button>
             </form>
           </div>

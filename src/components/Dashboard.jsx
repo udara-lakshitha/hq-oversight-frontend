@@ -311,7 +311,7 @@ export default function Dashboard({ student }) {
     } finally {
       localStorage.removeItem("token");
       localStorage.removeItem("user_role");
-      window.location.href = "/login";
+      window.location.href = "/";
     }
   };
 

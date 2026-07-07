@@ -27,7 +27,7 @@ export default function PerformanceTable({ data, visibleRows }) {
                 <td className="px-5 py-3.5 font-black">{paper.marks}%</td>
                 <td className="px-5 py-3.5">
                   {paper.trendText ? (
-                    <span className={`px-1.5 py-0.5 rounded ${paper.isPositive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>{paper.trendArrow} {paper.trendText}</span>
+                    <span className={`px-1.5 py-0.5 rounded ${paper.trendText[0] == "+" ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>{paper.trendArrow} {paper.trendText}</span>
                   ) : <span className="text-slate-400 italic">Baseline Entry</span>}
                 </td>
               </tr>

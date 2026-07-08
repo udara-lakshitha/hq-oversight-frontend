@@ -12,21 +12,23 @@ export default function AnalyticsChart({ data, subjectFilter, setSubjectFilter }
           <button onClick={() => setSubjectFilter('APPLIED')} className={`px-2.5 py-1 rounded-md cursor-pointer ${subjectFilter === 'APPLIED' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500'}`}>Applied</button>
         </div>
       </div>
-      <div className="h-60 w-full">
+      <div className="h-60 w-full overflow-x-auto">
         {data.length === 0 ? (
           <div className="h-full flex items-center justify-center text-xs font-bold text-slate-400 border border-dashed border-slate-200 rounded-xl">
             No structural historical marks detected for this profile yet.
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data.filter(i => i.marks !== null)}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="id" tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
-              <Tooltip />
-              <Area type="monotone" dataKey="marks" stroke="#2563eb" fillOpacity={0.1} fill="#2563eb" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <div className="h-full min-w-[500px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={data.filter(i => i.marks !== null)}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="id" tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
+                <Tooltip />
+                <Area type="monotone" dataKey="marks" stroke="#2563eb" fillOpacity={0.1} fill="#2563eb" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         )}
       </div>
     </div>
